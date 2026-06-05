@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "0*"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install ruff
+      - run: ruff check src/
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: humetric
+          POSTGRES_PASSWORD: humetric
+          POSTGRES_DB: humetric
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev]"
+      - run: pytest --timeout=30 -x
+        env:
+          DATABASE_URL: postgresql+psycopg://humetric:humetric@localhost:5432/humetric
+          DATABASE_URL_APP: postgresql+psycopg://humetric_app:humetric_app@localhost:5432/humetric
+          ANTHROPIC_API_KEY: sk-test
+          VOYAGE_API_KEY: pa-test
+          HUMETRIC_AUTH_SECRET: test-secret
+
+  build:
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -f Dockerfile.prod -t humetric-api:${{ github.sha }} .
+      - name: Push to registry
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Docker push would go here"
+          # docker push humetric-api:${{ github.sha }}

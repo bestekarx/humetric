@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: humetric-api
+  labels:
+    app: humetric
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: humetric
+      component: api
+  template:
+    metadata:
+      labels:
+        app: humetric
+        component: api
+    spec:
+      containers:
+        - name: api
+          image: humetric-api:latest
+          ports:
+            - containerPort: 8002
+          envFrom:
+            - configMapRef:
+                name: humetric-config
+          resources:
+            requests:
+              cpu: 256m
+              memory: 512Mi
+            limits:
+              cpu: 1024m
+              memory: 1024Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 30
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: humetric-worker
+  labels:
+    app: humetric
+    component: worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: humetric
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: humetric
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: humetric-api:latest
+          command: ["python", "-m", "humetric.worker"]
+          envFrom:
+            - configMapRef:
+                name: humetric-config
+          resources:
+            requests:
+              cpu: 128m
+              memory: 256Mi
+            limits:
+              cpu: 512m
+              memory: 512Mi

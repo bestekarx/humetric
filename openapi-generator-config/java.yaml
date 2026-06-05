@@ -1,0 +1,9 @@
+generatorName: java
+outputDir: /tmp/humetric-sdk-java
+inputSpec: /tmp/openapi.json
+additionalProperties:
+  groupId: com.humetric
+  artifactId: humetric-sdk
+  artifactVersion: 0.1.0
+  library: okhttp-gson
+  useJakartaEe: true

@@ -1,0 +1,7 @@
+# Terraform variables example — copy to terraform.tfvars and fill in
+humetric_version = "latest"
+instance_count   = 2
+region           = "us-east-1"
+environment      = "production"
+db_password      = "change-me"
+db_username      = "humetric"

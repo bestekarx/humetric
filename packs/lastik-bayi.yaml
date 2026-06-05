@@ -1,0 +1,41 @@
+entity_type: bayi
+label: "Lastik Dağıtım Bayisi"
+version: 1
+required_fields:
+  - key: satis_adedi
+    type: int
+    label: "Aylık Satış Adedi"
+  - key: bolge
+    type: str
+    label: "Bölge"
+
+metrics:
+  - key: satis_performansi
+    label: "Satış Performansı"
+    type: float
+    prompt: "Satış hacmi, hedef tutturma, büyüme trendi, pazar payı"
+    default_confidence: 0.5
+
+  - key: tahsilat_disiplini
+    label: "Tahsilat Disiplini"
+    type: float
+    prompt: "Ödeme süresi, gecikme sıklığı, vade uyumu, çek/senet sorunları"
+    default_confidence: 0.5
+
+  - key: musteri_memnuniyeti
+    label: "Müşteri Memnuniyeti"
+    type: float
+    prompt: "Müşteri şikayetleri, tekrar satın alma, tavsiye etme oranı"
+    default_confidence: 0.5
+
+prompts:
+  extraction: |
+    Sen bir lastik dağıtım ağı için performans analiz ajanısın.
+    Verilen sinyal metninden bayinin metriklerini çıkar. Satış performansı,
+    tahsilat ve müşteri memnuniyetine odaklan.
+  curation: |
+    Sen bir metrik küratörüsün. Lastik dağıtım bayileri için çıkarılan metrikleri
+    mevcut profille karşılaştırıp doğrula. Mevsimsel dalgalanmaları göz önünde bulundur.
+
+kvkk:
+  sensitive_metrics: []

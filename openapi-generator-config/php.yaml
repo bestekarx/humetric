@@ -1,0 +1,8 @@
+generatorName: php
+outputDir: /tmp/humetric-sdk-php
+inputSpec: /tmp/openapi.json
+additionalProperties:
+  packageName: humetric/sdk
+  packageVersion: 0.1.0
+  invokerPackage: Humetric
+  composerPackageName: humetric/sdk

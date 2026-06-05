@@ -1,0 +1,11 @@
+generatorName: python
+outputDir: /tmp/humetric-sdk-python
+inputSpec: /tmp/openapi.json
+additionalProperties:
+  packageName: humetric_sdk
+  packageVersion: 0.1.0
+  projectName: humetric-sdk
+  packageUrl: https://github.com/bestekarx/humetric-sdk-python
+  useNose: false
+  pythonAttrNoneIfUnset: true
+  generateSourceCodeOnly: true

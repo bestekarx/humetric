@@ -1,0 +1,57 @@
+entity_type: isci
+label: "Saha Hizmet Çalışanı"
+version: 1
+required_fields:
+  - key: lokasyon
+    type: str
+    label: "Hizmet Bölgesi"
+  - key: statik_beceriler
+    type: str
+    label: "Uzmanlık Alanları"
+
+metrics:
+  - key: dakiklik
+    label: "Dakiklik"
+    type: float
+    prompt: "İşe zamanında gelme, randevuya uyma, gecikme durumları"
+    default_confidence: 0.5
+
+  - key: titizlik
+    label: "İş Titizliği"
+    type: float
+    prompt: "İşi temiz yapma, malzeme kullanımı, iş bitirme kalitesi"
+    default_confidence: 0.5
+
+  - key: teknik_beceri
+    label: "Teknik Beceri"
+    type: float
+    prompt: "Uzmanlık alanındaki yetkinlik, problem çözme, alet kullanımı"
+    default_confidence: 0.5
+
+  - key: iletisim
+    label: "Müşteri İletişimi"
+    type: float
+    prompt: "Müşteriyle iletişim, nezaket, açıklamalar, şikayet yönetimi"
+    default_confidence: 0.5
+
+  - key: mali_durum
+    label: "Mali Durum"
+    type: float
+    prompt: "Ödeme alışkanlıkları, finansal istikrar, borç yönetimi"
+    default_confidence: 0.5
+    sensitive: true
+    visible_to: ["admin"]
+    requires_consent_scope: "hassas_veri_isleme"
+
+prompts:
+  extraction: |
+    Sen bir saha hizmet çalışanı performans analiz ajanısın.
+    Verilen sinyal metninden işçinin metriklerini çıkar. Saha hizmet sektörüne özgü
+    metrikler: dakiklik, iş titizliği, teknik beceri, müşteri iletişimi.
+  curation: |
+    Sen bir metrik küratörüsün. Saha hizmet çalışanları için çıkarılan metrikleri
+    mevcut profille karşılaştırıp doğrula. Saha hizmetinde tek seferlik kötü performans
+    ile sürekli düşük performansı ayırt et.
+
+kvkk:
+  sensitive_metrics: ["mali_durum"]

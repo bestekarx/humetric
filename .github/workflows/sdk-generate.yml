@@ -1,0 +1,42 @@
+name: SDK Generate
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/humetric/api.py'
+      - 'src/humetric/schema.py'
+
+jobs:
+  generate-sdk:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lang: [python, typescript, dotnet, php, java]
+        repo:
+          - python: {name: humetric-sdk-python, branch: main}
+          - typescript: {name: humetric-sdk-js, branch: main}
+          - dotnet: {name: humetric-sdk-dotnet, branch: main}
+          - php: {name: humetric-sdk-php, branch: main}
+          - java: {name: humetric-sdk-java, branch: main}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch OpenAPI spec
+        run: |
+          curl -s http://localhost:8002/openapi.json > /tmp/openapi.json
+      - name: Generate SDK
+        uses: openapitools/openapi-generator-cli-action@v1
+        with:
+          generator: ${{ matrix.lang }}
+          input: /tmp/openapi.json
+          output: /tmp/humetric-sdk-${{ matrix.lang }}
+          config: openapi-generator-config/${{ matrix.lang }}.yaml
+      - name: Push to SDK repo
+        run: |
+          git clone https://x-access-token:${{ secrets.SDK_REPO_TOKEN }}@github.com/bestekarx/${{ matrix.lang == 'typescript' && 'humetric-sdk-js' || format('humetric-sdk-{0}', matrix.lang) }}.git /tmp/sdk-target
+          cp -r /tmp/humetric-sdk-${{ matrix.lang }}/* /tmp/sdk-target/
+          cd /tmp/sdk-target
+          git config user.name "bestekarx"
+          git config user.email "bestekarx@users.noreply.github.com"
+          git add .
+          git diff --staged --quiet || (git commit -m "auto: regenerate from OpenAPI spec" && git push)

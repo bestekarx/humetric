@@ -1,0 +1,57 @@
+entity_type: cari
+label: "Saha Hizmet Müşterisi"
+version: 1
+required_fields:
+  - key: firma_adi
+    type: str
+    label: "Firma Adı"
+  - key: telefon
+    type: str
+    label: "Telefon"
+
+metrics:
+  - key: odeme_aliskanligi
+    label: "Ödeme Alışkanlığı"
+    type: float
+    prompt: "Fatura ödeme düzeni, gecikme durumları, tahsilat kolaylığı, bakiye yönetimi"
+    default_confidence: 0.5
+
+  - key: iletisim
+    label: "İletişim"
+    type: float
+    prompt: "Geri dönüş hızı, netlik, randevuya uyma, telefonla ulaşılabilirlik"
+    default_confidence: 0.5
+
+  - key: is_tekrari
+    label: "İş Tekrarı"
+    type: float
+    prompt: "Ne sıklıkla yeni iş verdiği, sadakat seviyesi, uzun vadeli müşteri olma potansiyeli"
+    default_confidence: 0.5
+
+  - key: memnuniyet
+    label: "Memnuniyet"
+    type: float
+    prompt: "Hizmet sonrası genel memnuniyet düzeyi, şikayet sıklığı, tavsiye etme olasılığı"
+    default_confidence: 0.5
+
+prompts:
+  extraction: |
+    Sen bir saha hizmet müşteri analiz ajanısın.
+    Verilen sinyal metninden müşterinin metriklerini çıkar. Saha hizmet sektörüne özgü
+    metrikler: ödeme alışkanlığı, iletişim kalitesi, iş tekrarı sadakati, genel memnuniyet.
+
+    Her metrik için:
+    - value: -1.0 (çok kötü) ile 1.0 (çok iyi) arasında
+    - confidence: 0.0 ile 1.0 arasında (kanıt gücüne göre)
+    - evidence: metinden doğrudan alıntı veya özet
+
+    Kanıt yoksa metrik üretme.
+  curation: |
+    Sen bir metrik küratörüsün. Saha hizmet müşterileri için çıkarılan metrikleri
+    mevcut profille karşılaştırıp doğrula. Tek seferlik olaylarla süregelen
+    davranış kalıplarını ayırt et.
+
+    Onay kriterleri:
+    - Yeni kanıt mevcut profille çelişiyorsa, daha güncel olanı tercih et
+    - Güven skoru 0.4 altındaysa reddet
+    - Tutarsız veya çelişkili kanıt varsa reddet

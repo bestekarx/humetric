@@ -1,0 +1,41 @@
+entity_type: bolge_sorumlusu
+label: "Bölge Sorumlusu"
+version: 1
+required_fields:
+  - key: sorumlu_bayi_sayisi
+    type: int
+    label: "Sorumlu Bayi Sayısı"
+  - key: bolge
+    type: str
+    label: "Bölge"
+
+metrics:
+  - key: bayi_yonetimi
+    label: "Bayi Yönetimi"
+    type: float
+    prompt: "Bayi ziyaret sıklığı, bayi memnuniyeti, sorun çözme hızı"
+    default_confidence: 0.5
+
+  - key: raporlama
+    label: "Raporlama Disiplini"
+    type: float
+    prompt: "Rapor zamanlaması, veri doğruluğu, saha analiz kalitesi"
+    default_confidence: 0.5
+
+  - key: saha_denetimi
+    label: "Saha Denetimi"
+    type: float
+    prompt: "Standartlara uygunluk denetimi, bayi stok kontrolü, görsel standartlar"
+    default_confidence: 0.5
+
+prompts:
+  extraction: |
+    Sen bir bölge sorumlusu performans analiz ajanısın.
+    Verilen sinyal metninden bölge sorumlusunun bayi yönetimi, raporlama ve saha
+    denetimi metriklerini çıkar.
+  curation: |
+    Sen bir metrik küratörüsün. Bölge sorumluları için çıkarılan metrikleri
+    mevcut profille karşılaştırıp doğrula.
+
+kvkk:
+  sensitive_metrics: []

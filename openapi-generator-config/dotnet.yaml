@@ -1,0 +1,8 @@
+generatorName: csharp
+outputDir: /tmp/humetric-sdk-dotnet
+inputSpec: /tmp/openapi.json
+additionalProperties:
+  packageName: Humetric.Sdk
+  packageVersion: 0.1.0
+  targetFramework: net8.0
+  netCoreProjectFile: true

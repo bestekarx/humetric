@@ -1,0 +1,9 @@
+generatorName: typescript-fetch
+outputDir: /tmp/humetric-sdk-js
+inputSpec: /tmp/openapi.json
+additionalProperties:
+  npmName: "@humetric/sdk"
+  npmVersion: 0.1.0
+  supportsES6: true
+  typescriptThreePlus: true
+  withInterfaces: true

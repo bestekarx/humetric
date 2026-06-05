@@ -1,0 +1,97 @@
+{
+  "info": {
+    "name": "HuMetric API",
+    "description": "HuMetric Platform API — entity metric tracking and signal processing. Full /v1 endpoint collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8002"},
+    {"key": "apiKey", "value": ""}
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {"name": "Health Check", "request": {"method": "GET", "url": "{{baseUrl}}/healthz"}},
+        {"name": "DB Health", "request": {"method": "GET", "url": "{{baseUrl}}/healthz/db"}},
+        {"name": "Worker Health", "request": {"method": "GET", "url": "{{baseUrl}}/healthz/worker"}}
+      ]
+    },
+    {
+      "name": "API Keys",
+      "item": [
+        {"name": "Create API Key", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/api-keys", "body": {"mode": "raw", "raw": "{\"prefix\": \"myapp\", \"label\": \"My App Key\", \"scopes\": [\"signals:write\", \"entities:read\"]}"}}},
+        {"name": "List API Keys", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/api-keys"}},
+        {"name": "Revoke API Key", "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/api-keys/1"}}
+      ]
+    },
+    {
+      "name": "Packs",
+      "item": [
+        {"name": "Create Pack (Saha Isci)", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/packs", "body": {"mode": "raw", "raw": "{\"yaml_text\": \"entity_type: isci\\nlabel: Saha Hizmet Calisani\\nversion: 1\\nrequired_fields:\\n  - key: lokasyon\\n    type: str\\n    label: Hizmet Bolgesi\\n  - key: statik_beceriler\\n    type: str\\n    label: Uzmanlik Alanlari\\nmetrics:\\n  - key: dakiklik\\n    label: Dakiklik\\n    type: float\\n    prompt: Randevuya uyma durumu\"}"}}},
+        {"name": "Create Pack (Lastik Bayi)", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/packs", "body": {"mode": "raw", "raw": "{\"yaml_text\": \"entity_type: bayi\\nlabel: Lastik Dagitim Bayisi\\nversion: 1\\nrequired_fields:\\n  - key: satis_adedi\\n    type: int\\n    label: Aylik Satis Adedi\\n  - key: bolge\\n    type: str\\n    label: Bolge\\nmetrics:\\n  - key: satis_performansi\\n    label: Satis Performansi\\n    type: float\\n    prompt: Satis hacmi ve hedef tutturma\"}"}}},
+        {"name": "List Packs", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/packs"}},
+        {"name": "Get Pack Detail", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/packs/isci"}},
+        {"name": "Update Pack", "request": {"method": "PUT", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/packs/isci", "body": {"mode": "raw", "raw": "{\"yaml_text\": \"entity_type: isci\\nlabel: Saha Hizmet Calisani\\nversion: 2\\nrequired_fields:\\n  - key: lokasyon\\n    type: str\\n    label: Hizmet Bolgesi\\nmetrics:\\n  - key: dakiklik\\n    label: Dakiklik\\n    type: float\\n    prompt: Randevuya uyma\"}"}}},
+        {"name": "AI Wizard", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/packs/wizard", "body": {"mode": "raw", "raw": "{\"text\": \"E-ticaret sektoru. Musterilerin siparis sikligi, iade orani ve ortalama sepet tutari metrikleri olculur.\"}"}}}
+      ]
+    },
+    {
+      "name": "Entities",
+      "item": [
+        {"name": "Create Entity", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/entities", "body": {"mode": "raw", "raw": "{\"id\": \"isci-1\", \"entity_type\": \"isci\", \"fields\": {\"lokasyon\": \"Istanbul\", \"statik_beceriler\": \"su tesisati, kalorifer\"}}"}}},
+        {"name": "Get Entity", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/entities/isci-1"}},
+        {"name": "Get Entity Metrics", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/entities/isci-1/metrics"}}
+      ]
+    },
+    {
+      "name": "Signals",
+      "item": [
+        {"name": "Create Signal", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}, {"key": "Idempotency-Key", "value": "sig-test-01"}], "url": "{{baseUrl}}/v1/signals", "body": {"mode": "raw", "raw": "{\"entity_id\": \"isci-1\", \"entity_type\": \"isci\", \"text\": \"Isci bugun 3 isi zamaninda tamamladi, musteri memnun kaldi\"}"}}},
+        {"name": "Get Signal Status", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/signals/{{signalId}}"}},
+        {"name": "Get Signal Trace", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/signals/{{signalId}}/trace"}}
+      ]
+    },
+    {
+      "name": "Query",
+      "item": [
+        {"name": "Query Entities", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/query", "body": {"mode": "raw", "raw": "{\"free_text_query\": \"guvenilir su tesisatcisi\", \"entity_type\": \"isci\", \"top_k\": 5}"}}}
+      ]
+    },
+    {
+      "name": "Consent",
+      "item": [
+        {"name": "Grant Consent", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/consent", "body": {"mode": "raw", "raw": "{\"entity_id\": \"isci-1\", \"scope\": \"hassas_veri_isleme\", \"status\": \"granted\"}"}}},
+        {"name": "List Consents", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/consent/isci-1"}},
+        {"name": "Revoke Consent", "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/consent/isci-1?scope=hassas_veri_isleme"}}
+      ]
+    },
+    {
+      "name": "Tenant",
+      "item": [
+        {"name": "Get Dashboard", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/tenant/dashboard"}},
+        {"name": "Get Keys", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/tenant/keys"}},
+        {"name": "Set Keys", "request": {"method": "PUT", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}, {"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/tenant/keys", "body": {"mode": "raw", "raw": "{\"anthropic_key\": \"sk-ant-your-key\", \"voyage_key\": \"vp-your-key\"}"}}},
+        {"name": "Delete Keys", "request": {"method": "DELETE", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/tenant/keys"}}
+      ]
+    },
+    {
+      "name": "Billing",
+      "item": [
+        {"name": "Checkout (Pro)", "request": {"method": "POST", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/billing/checkout?tier=pro"}}
+      ]
+    },
+    {
+      "name": "Registration",
+      "item": [
+        {"name": "Register", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{baseUrl}}/v1/register", "body": {"mode": "raw", "raw": "{\"email\": \"demo@example.com\", \"password\": \"securepassword123\", \"captcha_token\": \"dev-bypass\"}"}}}
+      ]
+    },
+    {
+      "name": "Usage",
+      "item": [
+        {"name": "Get Usage", "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{apiKey}}"}], "url": "{{baseUrl}}/v1/usage?baslangic=2026-06-01&bitis=2026-06-30"}}
+      ]
+    }
+  ]
+}

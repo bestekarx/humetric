@@ -1,0 +1,2 @@
+"""Sektör senaryo tanımları."""
+

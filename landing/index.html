@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HuMetric — Entity Metric Engine</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <nav>
+            <h1>HuMetric</h1>
+            <div>
+                <a href="#features">Ozellikler</a>
+                <a href="#pricing">Fiyatlandirma</a>
+                <a href="https://docs.humetric.io" target="_blank">Dokumantasyon</a>
+                <a href="/dashboard">Dashboard</a>
+            </div>
+        </nav>
+    </header>
+
+    <section class="hero">
+        <h2>Entity Metriklerinizi AI ile Yonetin</h2>
+        <p>Saticilarinizi, musterilerinizi, urunlerinizi dogal dil sinyalleri ile takip edin. LLM destekli metrik cikarimi ve akilli siralama.</p>
+        <a href="#register" class="btn-primary">Ucretsiz Baslayin</a>
+        <a href="https://docs.humetric.io" class="btn-secondary">Dokumantasyon</a>
+    </section>
+
+    <section id="features">
+        <h2>Ozellikler</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <h3>Dogal Dil Sinyal Gonderimi</h3>
+                <p>Entity'leriniz hakkinda serbest metin gozlemleri gonderin. LLM otomatik olarak metrik cikarir.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Akilli Siralama</h3>
+                <p>Hybrid arama (vektor + tam metin) ile entity'lerinizi metrik bazli siralayin.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Metric Pack Yonetimi</h3>
+                <p>Kendi metrik setlerinizi YAML ile tanimlayin. AI pack wizard ile sifirdan pack olusturun.</p>
+            </div>
+            <div class="feature-card">
+                <h3>MCP Entegrasyonu</h3>
+                <p>Claude Desktop'a MCP server ekleyerek sohbet icinden entity yonetin.</p>
+            </div>
+            <div class="feature-card">
+                <h3>5 Dilde SDK</h3>
+                <p>Python, TypeScript, .NET, PHP, Java — kendi dilinizde entegre olun.</p>
+            </div>
+            <div class="feature-card">
+                <h3>KVKK Uyumlu</h3>
+                <p>Hassas metrikler icin 3 katmanli KVKK korumasi.</p>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing">
+        <h2>Fiyatlandirma</h2>
+        <div class="pricing-grid">
+            <div class="pricing-card">
+                <h3>Free</h3>
+                <p class="price">$0<span>/ay</span></p>
+                <ul>
+                    <li>1,000 sinyal/ay</li>
+                    <li>10 entity</li>
+                    <li>1 metric pack</li>
+                    <li>Topluluk destegi</li>
+                </ul>
+                <a href="#register" class="btn-primary">Baslayin</a>
+            </div>
+            <div class="pricing-card featured">
+                <h3>Pro</h3>
+                <p class="price">$49<span>/ay</span></p>
+                <ul>
+                    <li>Sinirsiz sinyal</li>
+                    <li>Sinirsiz entity</li>
+                    <li>Sinirsiz metric pack</li>
+                    <li>E-posta destegi</li>
+                </ul>
+                <a href="/dashboard" class="btn-primary">Yukseltin</a>
+            </div>
+            <div class="pricing-card">
+                <h3>Enterprise</h3>
+                <p class="price">$199<span>/ay</span></p>
+                <ul>
+                    <li>Sinirsiz sinyal</li>
+                    <li>Sinirsiz entity</li>
+                    <li>Sinirsiz metric pack</li>
+                    <li>Ozel destek</li>
+                    <li>Ozel SLA</li>
+                    <li>BYO-key destegi</li>
+                </ul>
+                <a href="/dashboard" class="btn-secondary">Iletisim</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="register">
+        <h2>Hemen Baslayin</h2>
+        <form id="register-form">
+            <input type="email" id="email" placeholder="Email adresiniz" required>
+            <input type="password" id="password" placeholder="Sifre (en az 8 karakter)" minlength="8" required>
+            <button type="submit" class="btn-primary">Kayit Ol</button>
+        </form>
+        <p id="register-message"></p>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 HuMetric. Tum haklari saklidir.</p>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>
