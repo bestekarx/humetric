@@ -445,6 +445,11 @@ async def create_signal(
         },
     })
 
+    try:
+        await record_signal(tenant_id)
+    except Exception:
+        _log.exception("Failed to record signal usage for tenant %d", tenant_id)
+
     return JSONResponse(
         status_code=202,
         content={
@@ -849,7 +854,7 @@ async def create_pack_wizard(
     from .agents.wizard import generate_pack_yaml
 
     try:
-        result = await generate_pack_yaml(body.text, body.entity_type_hint)
+        result = await generate_pack_yaml(body.text, body.entity_type_hint, tenant_id=request.state.tenant_id)
         return result
     except Exception as exc:
         _log.exception("Wizard failed")
@@ -1015,6 +1020,7 @@ async def query_entities(
         rank_by=body.rank_by,
         include_reasoning=body.include_reasoning,
         top_k=top_k,
+        tenant_id=tenant_id,
     )
 
     results = []
@@ -1048,10 +1054,13 @@ async def query_entities(
 # ── Helper ─────────────────────────────────────────────────────
 
 def _entity_metric_to_read(m) -> EntityMetricRead:
+    from .decay import decayed_confidence
+
     return EntityMetricRead(
         metric_key=m.metric_key,
         value=m.value,
         confidence=m.confidence,
+        effective_confidence=decayed_confidence(m.confidence, m.last_updated),
         source_count=m.source_count,
         last_updated=m.last_updated,
         source_signal_id=m.signal_id,

@@ -53,9 +53,10 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         text, ctx,
         pack_prompt=pack_extraction_prompt,
         pack_metrics=pack_metrics,
+        tenant_id=task.tenant_id,
     )
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
-    final_metrics = await curator.curate_metrics(extracted, existing_metrics, ctx, pack_def)
+    final_metrics = await curator.curate_metrics(extracted, existing_metrics, ctx, pack_def, tenant_id=task.tenant_id)
 
     atlanan_hassas: list[str] = []
 

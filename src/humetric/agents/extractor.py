@@ -17,6 +17,7 @@ async def extract_metrics(
     entity_context: str = "",
     pack_prompt: str | None = None,
     pack_metrics: list[dict] | None = None,
+    tenant_id: int | None = None,
 ) -> list[ExtractedMetric]:
     system = pack_prompt or _DEFAULT_SYSTEM
 
@@ -53,5 +54,6 @@ Yukaridaki sinyalden metrikleri cikar."""
         schema=ExtractionResult,
         tool_ad="extract_metrics",
         tool_aciklama="Sinyal metninden metrik cikar",
+        tenant_id=tenant_id,
     )
     return result.metrics

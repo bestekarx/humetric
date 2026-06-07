@@ -62,6 +62,10 @@ HASSAS_METRIC_KEYS: list[str] = os.environ.get(
 
 RATE_LIMIT_PER_MINUTE = int(os.environ.get("HUMETRIC_RATE_LIMIT", "100"))
 
+LLM_MAX_RETRIES = int(os.environ.get("HUMETRIC_LLM_MAX_RETRIES", "3"))
+DECAY_ENABLED = os.environ.get("HUMETRIC_DECAY_ENABLED", "true").lower() != "false"
+ENFORCE_TIER_LIMITS = os.environ.get("HUMETRIC_ENFORCE_TIER_LIMITS", "false").lower() == "true"
+
 # Stripe (Spec 026)
 STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")

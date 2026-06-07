@@ -715,6 +715,12 @@ class Store:
             entity.embedding_metni = embed_text
             entity.embedding_pending = False
             await db.commit()
+
+            try:
+                from .services.usage_service import record_embedding
+                await record_embedding(tenant_id)
+            except Exception:
+                pass
         except Exception:
             entity.embedding_pending = True
             await db.commit()
@@ -820,7 +826,9 @@ def _build_embed_text_safe(
 
 
 def _metric_row_to_read(row: EntityMetric) -> dict:
-    return {
+    from .decay import decayed_confidence
+
+    d = {
         "metric_key": row.metric_key,
         "value": row.value,
         "confidence": row.confidence,
@@ -828,6 +836,8 @@ def _metric_row_to_read(row: EntityMetric) -> dict:
         "last_updated": row.last_updated,
         "source_signal_id": row.signal_id,
     }
+    d["effective_confidence"] = decayed_confidence(row.confidence, row.last_updated)
+    return d
 
 
 # ── Encryption (Spec 025) ──────────────────────────────────────

@@ -136,6 +136,7 @@ class EntityMetricRead(BaseModel):
     metric_key: str = Field(validation_alias=AliasChoices("metric_key", "key", "metricKey"))
     value: float
     confidence: float
+    effective_confidence: float | None = Field(default=None, validation_alias=AliasChoices("effective_confidence", "effectiveConfidence"))
     source_count: int = Field(default=1, validation_alias=AliasChoices("source_count", "sourceCount"))
     last_updated: datetime | None = Field(default=None, validation_alias=AliasChoices("last_updated", "lastUpdated"))
     source_signal_id: str | None = Field(default=None, validation_alias=AliasChoices("source_signal_id", "sourceSignalId"))

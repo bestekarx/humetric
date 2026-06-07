@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 from .. import config
 from ..schema import CurationResult, ExtractedMetric, FinalMetric
 from ..db.models import EntityMetric
@@ -20,6 +18,7 @@ async def curate_metrics(
     existing_metrics: list[EntityMetric],
     entity_context: str = "",
     pack_def: dict | None = None,
+    tenant_id: int | None = None,
 ) -> list[FinalMetric]:
     if not extracted:
         return []
@@ -56,6 +55,7 @@ Her cikarilan metrik icin karar ver."""
         schema=CurationResult,
         tool_ad="curate_metrics",
         tool_aciklama="Cikarilan metrikleri dogrula ve nihai degerleri belirle",
+        tenant_id=tenant_id,
     )
 
     metric_type_map: dict[str, str] = {}
@@ -102,9 +102,6 @@ Her cikarilan metrik icin karar ver."""
         expected_type = metric_type_map.get(dec.metric_key, "float")
         if not _type_matches(final_value, expected_type):
             final_confidence = max(0.0, final_confidence - 0.2)
-
-        # temporal decay
-        final_confidence *= math.exp(-config.DECAY_LAMBDA * 0)
 
         final_metrics.append(FinalMetric(
             metric_key=dec.metric_key,

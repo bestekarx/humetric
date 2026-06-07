@@ -18,7 +18,7 @@ if not _DEFAULT_SYSTEM:
     _DEFAULT_SYSTEM = "You are a Metric Pack design expert. Generate a YAML metric pack from the domain description."
 
 
-async def generate_pack_yaml(text: str, entity_type_hint: str | None = None) -> PackWizardResponse:
+async def generate_pack_yaml(text: str, entity_type_hint: str | None = None, tenant_id: int | None = None) -> PackWizardResponse:
     """Serbest metinden pack YAML uret."""
     from .base import structured_call
 
@@ -40,6 +40,7 @@ async def generate_pack_yaml(text: str, entity_type_hint: str | None = None) -> 
             schema=PackDefinition,
             tool_ad="generate_pack",
             tool_aciklama="Generate a complete Metric Pack YAML definition from the domain description",
+            tenant_id=tenant_id,
         )
 
         yaml_text = _pack_definition_to_yaml(result)

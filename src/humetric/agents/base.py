@@ -12,16 +12,25 @@ from .. import config
 from .. import telemetry
 
 _client: anthropic.Anthropic | None = None
+_byo_client_cache: dict[str, anthropic.Anthropic] = {}
 T = TypeVar("T", bound=BaseModel)
 
 
 def _get_client(api_key: str | None = None) -> anthropic.Anthropic:
-    global _client
+    global _client, _byo_client_cache
     if api_key is not None:
-        return anthropic.Anthropic(api_key=api_key)
+        if api_key not in _byo_client_cache:
+            _byo_client_cache[api_key] = anthropic.Anthropic(
+                api_key=api_key,
+                max_retries=config.LLM_MAX_RETRIES,
+            )
+        return _byo_client_cache[api_key]
     if _client is None:
         config.require_keys()
-        _client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        _client = anthropic.Anthropic(
+            api_key=config.ANTHROPIC_API_KEY,
+            max_retries=config.LLM_MAX_RETRIES,
+        )
     return _client
 
 
@@ -44,8 +53,13 @@ async def structured_call(
     tool_ad: str,
     tool_aciklama: str,
     api_key: str | None = None,
+    tenant_id: int | None = None,
 ) -> T:
     import asyncio
+    import logging
+
+    _log = logging.getLogger(__name__)
+
     tool: dict = {
         "name": tool_ad,
         "description": tool_aciklama,
@@ -61,18 +75,37 @@ async def structured_call(
 
     t0 = time.perf_counter()
     client = _get_client(api_key=api_key)
-    resp = await asyncio.to_thread(
-        lambda: client.messages.create(
-            model=model,
-            max_tokens=config.MAX_TOKENS,
-            system=system_param,
-            tools=[tool],
-            tool_choice={"type": "tool", "name": tool_ad},
-            messages=[{"role": "user", "content": user if isinstance(user, list) else user}],
+
+    try:
+        resp = await asyncio.to_thread(
+            lambda: client.messages.create(
+                model=model,
+                max_tokens=config.MAX_TOKENS,
+                system=system_param,
+                tools=[tool],
+                tool_choice={"type": "tool", "name": tool_ad},
+                messages=[{"role": "user", "content": user if isinstance(user, list) else user}],
+            )
         )
-    )
+    except anthropic.BadRequestError as exc:
+        _log.warning("Non-retryable LLM error (400): %s", exc)
+        raise
+    except (anthropic.APIStatusError, anthropic.RateLimitError, anthropic.APIConnectionError) as exc:
+        status_code = getattr(exc, "status_code", None)
+        _log.error("LLM call failed (status=%s): %s", status_code, exc)
+        raise
+
     latency_ms = int((time.perf_counter() - t0) * 1000)
+    total_tokens = (resp.usage.input_tokens if resp.usage else 0) + (resp.usage.output_tokens if resp.usage else 0)
     telemetry.log_call(agent=tool_ad, model=model, usage=resp.usage, latency_ms=latency_ms)
+
+    if tenant_id is not None:
+        try:
+            from ..services.usage_service import record_llm_tokens
+            if total_tokens > 0:
+                await record_llm_tokens(tenant_id, total_tokens)
+        except Exception:
+            _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)
 
     for blok in resp.content:
         if blok.type == "tool_use" and blok.name == tool_ad:

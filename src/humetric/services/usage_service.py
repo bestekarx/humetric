@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timezone
 
@@ -52,31 +53,59 @@ def _upsert_usage(sync_engine, tenant_id: int, tarih: date, **fields) -> None:
         conn.execute(stmt)
 
 
-async def record_signal(tenant_id: int) -> None:
+async def _upsert_usage_async(tenant_id: int, tarih: date, **fields) -> None:
     engine = get_sync_engine()
-    _upsert_usage(engine, tenant_id, date.today(), sinyal_sayisi=1)
+    await asyncio.to_thread(_upsert_usage, engine, tenant_id, tarih, **fields)
+
+
+async def record_signal(tenant_id: int) -> None:
+    await _upsert_usage_async(tenant_id, date.today(), sinyal_sayisi=1)
 
 
 async def record_llm_tokens(tenant_id: int, count: int) -> None:
-    engine = get_sync_engine()
-    _upsert_usage(engine, tenant_id, date.today(), llm_token_sayisi=count)
+    await _upsert_usage_async(tenant_id, date.today(), llm_token_sayisi=count)
 
 
 async def record_embedding(tenant_id: int) -> None:
-    engine = get_sync_engine()
-    _upsert_usage(engine, tenant_id, date.today(), embedding_sayisi=1)
+    await _upsert_usage_async(tenant_id, date.today(), embedding_sayisi=1)
 
 
 async def check_tier_limit(tenant_id: int, metric: str, current_value: int) -> bool:
     """Free tier limit kontrolu. True → limit asilmadi, False → limit asildi."""
+    def _check():
+        engine = get_sync_engine()
+        with engine.begin() as conn:
+            tenant = conn.execute(
+                select(Tenant.tier).where(Tenant.id == tenant_id)
+            ).scalar_one_or_none()
+        if not tenant or tenant not in TIER_LIMITS:
+            return True
+        limit = TIER_LIMITS[tenant].get(metric)
+        if limit is None:
+            return True  # paid tier — limitsiz
+        return current_value < limit
+
+    return await asyncio.to_thread(_check)
+
+
+async def get_current_usage(tenant_id: int) -> dict[str, int]:
+    """Bu ayki usage toplamini dondur."""
     engine = get_sync_engine()
-    with engine.begin() as conn:
-        tenant = conn.execute(
-            select(Tenant.tier).where(Tenant.id == tenant_id)
-        ).scalar_one_or_none()
-    if not tenant or tenant not in TIER_LIMITS:
-        return True
-    limit = TIER_LIMITS[tenant].get(metric)
-    if limit is None:
-        return True  # paid tier — limitsiz
-    return current_value < limit
+    today = date.today()
+    start_of_month = date(today.year, today.month, 1)
+
+    def _query():
+        with engine.begin() as conn:
+            rows = conn.execute(
+                select(MeteringRecord).where(
+                    MeteringRecord.tenant_id == tenant_id,
+                    MeteringRecord.tarih >= start_of_month,
+                )
+            ).all()
+            return {
+                "sinyal_sayisi": sum(r.sinyal_sayisi for r in rows),
+                "entity_count": 0,  # tenant tablosundan gelir
+                "pack_count": 0,    # tenant tablosundan gelir
+            }
+
+    return await asyncio.to_thread(_query)

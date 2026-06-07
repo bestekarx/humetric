@@ -15,14 +15,35 @@ services:
       timeout: 5s
       retries: 5
 
+  api:
+    build: .
+    command: uvicorn humetric.api:app --host 0.0.0.0 --port 8002
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql+psycopg://humetric:humetric@db:5432/humetric
+      DATABASE_URL_APP: postgresql+psycopg://humetric_app:humetric_app@db:5432/humetric
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
+      HUMETRIC_ENCRYPTION_KEY: ${HUMETRIC_ENCRYPTION_KEY:-}
+    restart: unless-stopped
+
   worker:
     build: .
     command: python -m humetric.worker
     depends_on:
       db:
         condition: service_healthy
-    env_file:
-      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://humetric:humetric@db:5432/humetric
+      DATABASE_URL_APP: postgresql+psycopg://humetric_app:humetric_app@db:5432/humetric
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
     restart: unless-stopped
 
 volumes:
