@@ -1,29 +1,36 @@
 name: SDK Generate
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'src/humetric/api.py'
-      - 'src/humetric/schema.py'
 
 jobs:
   generate-sdk:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        lang: [python, typescript, dotnet, php, java]
-        repo:
-          - python: {name: humetric-sdk-python, branch: main}
-          - typescript: {name: humetric-sdk-js, branch: main}
-          - dotnet: {name: humetric-sdk-dotnet, branch: main}
-          - php: {name: humetric-sdk-php, branch: main}
-          - java: {name: humetric-sdk-java, branch: main}
+        include:
+          - lang: python
+            repo: humetric-sdk-python
+          - lang: typescript
+            repo: humetric-sdk-js
+          - lang: dotnet
+            repo: humetric-sdk-dotnet
+          - lang: php
+            repo: humetric-sdk-php
+          - lang: java
+            repo: humetric-sdk-java
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch OpenAPI spec
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Generate OpenAPI spec
         run: |
-          curl -s http://localhost:8002/openapi.json > /tmp/openapi.json
+          pip install -e ".[dev]"
+          python generate_openapi.py
+          cp openapi.json /tmp/openapi.json
+        env:
+          ANTHROPIC_API_KEY: sk-test
+          VOYAGE_API_KEY: pa-test
+          HUMETRIC_AUTH_SECRET: test-secret
       - name: Generate SDK
         uses: openapitools/openapi-generator-cli-action@v1
         with:
@@ -33,7 +40,7 @@ jobs:
           config: openapi-generator-config/${{ matrix.lang }}.yaml
       - name: Push to SDK repo
         run: |
-          git clone https://x-access-token:${{ secrets.SDK_REPO_TOKEN }}@github.com/bestekarx/${{ matrix.lang == 'typescript' && 'humetric-sdk-js' || format('humetric-sdk-{0}', matrix.lang) }}.git /tmp/sdk-target
+          git clone https://x-access-token:${{ secrets.SDK_REPO_TOKEN }}@github.com/bestekarx/${{ matrix.repo }}.git /tmp/sdk-target
           cp -r /tmp/humetric-sdk-${{ matrix.lang }}/* /tmp/sdk-target/
           cd /tmp/sdk-target
           git config user.name "bestekarx"

@@ -337,4 +337,4 @@ Worker runs alongside the database; scale horizontally by adding more worker rep
 
 ## License
 
-See [LICENSE](LICENSE) (to be added to repository).
+[MIT](LICENSE)

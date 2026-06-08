@@ -50,8 +50,8 @@ async def structured_call(
     system: str,
     user: str | list[dict],
     schema: Type[T],
-    tool_ad: str,
-    tool_aciklama: str,
+    tool_name: str,
+    tool_description: str,
     api_key: str | None = None,
     tenant_id: int | None = None,
 ) -> T:
@@ -61,8 +61,8 @@ async def structured_call(
     _log = logging.getLogger(__name__)
 
     tool: dict = {
-        "name": tool_ad,
-        "description": tool_aciklama,
+        "name": tool_name,
+        "description": tool_description,
         "input_schema": schema.model_json_schema(),
     }
     if config.PROMPT_CACHE_ENABLED:
@@ -83,7 +83,7 @@ async def structured_call(
                 max_tokens=config.MAX_TOKENS,
                 system=system_param,
                 tools=[tool],
-                tool_choice={"type": "tool", "name": tool_ad},
+                tool_choice={"type": "tool", "name": tool_name},
                 messages=[{"role": "user", "content": user if isinstance(user, list) else user}],
             )
         )
@@ -97,7 +97,7 @@ async def structured_call(
 
     latency_ms = int((time.perf_counter() - t0) * 1000)
     total_tokens = (resp.usage.input_tokens if resp.usage else 0) + (resp.usage.output_tokens if resp.usage else 0)
-    telemetry.log_call(agent=tool_ad, model=model, usage=resp.usage, latency_ms=latency_ms)
+    telemetry.log_call(agent=tool_name, model=model, usage=resp.usage, latency_ms=latency_ms)
 
     if tenant_id is not None:
         try:
@@ -108,6 +108,6 @@ async def structured_call(
             _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)
 
     for blok in resp.content:
-        if blok.type == "tool_use" and blok.name == tool_ad:
+        if blok.type == "tool_use" and blok.name == tool_name:
             return schema.model_validate(blok.input)
-    raise RuntimeError(f"Model '{tool_ad}' aracini cagirmadi. Yanit: {resp.content!r}")
+    raise RuntimeError(f"Model '{tool_name}' aracini cagirmadi. Yanit: {resp.content!r}")

@@ -1,7 +1,7 @@
-"""SQLAlchemy ORM modelleri — Humetric Phase 0 (Spec 021) + Signal/UsageRecord (Spec 022) + MetricPack (Spec 023) + Tenant registration/Stripe (Spec 026).
+"""SQLAlchemy ORM models — Humetric Phase 0 (Spec 021) + Signal/UsageRecord (Spec 022) + MetricPack (Spec 023) + Tenant registration/Stripe (Spec 026).
 
-9 tablo: tenant, entity, entity_metric, api_key, consent, audit_log, signal, usage_record, metric_pack.
-RLS: tum tenant'a-bagli tablolarda tenant_id FK + RLS policy (migration'da).
+9 tables: tenant, entity, entity_metric, api_key, consent, audit_log, signal, usage_record, metric_pack.
+RLS: every tenant-scoped table has a tenant_id FK + RLS policy (defined in migrations).
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -32,9 +31,9 @@ from .database import Base
 
 _now = lambda: datetime.now(timezone.utc)  # noqa: E731
 
-# pgvector kolon boyutu, calisma zamani EMBED_DIM ile ayni olmali — aksi
-# halde pgvector adaptoru insert edilen vektoru kolon boyutuna gore
-# dogrularken hata verir. DB kolonu vector(1024) (Voyage/Cohere varsayilan).
+# The pgvector column size must match the runtime EMBED_DIM — otherwise the
+# pgvector adapter raises an error when validating the inserted vector against
+# the column size. DB column is vector(1024) (Voyage/Cohere default).
 EMBED_DIM = config.EMBED_DIM
 
 
@@ -165,7 +164,7 @@ class EntityMetric(Base):
 
 
 class Signal(Base):
-    """Sinyal isleme kaydi (Spec 022)."""
+    """Signal processing record (Spec 022)."""
     __tablename__ = "signal"
 
     id: Mapped[str] = mapped_column(String(100), primary_key=True)
@@ -207,7 +206,7 @@ class Signal(Base):
 
 
 class UsageRecord(Base):
-    """API kullanim kaydi (Spec 022)."""
+    """API usage record (Spec 022)."""
     __tablename__ = "usage_record"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -230,7 +229,7 @@ class UsageRecord(Base):
 
 
 class MeteringRecord(Base):
-    """Gunluk kullanim sayaci — sinyal/LLM/embedding (Spec 026)."""
+    """Daily usage counter — signal/LLM/embedding (Spec 026)."""
     __tablename__ = "metering_record"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -355,7 +354,7 @@ class MetricPack(Base):
 
 
 class Task(Base):
-    """Async isleme kuyrugu (Spec 024)."""
+    """Async processing queue (Spec 024)."""
     __tablename__ = "task"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

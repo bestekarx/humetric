@@ -1,12 +1,12 @@
-"""Usage/metering servisi — sinyal/LLM/embedding sayaclari, tier limit kontrolu (Spec 026)."""
+"""Usage/metering service — signal/LLM/embedding counters, tier limit checks (Spec 026)."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timezone
+from datetime import date
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ..config import (
@@ -26,7 +26,7 @@ TIER_LIMITS = {
         "pack_count": FREE_TIER_PACK_LIMIT,
     },
     "pro": {
-        "sinyal_sayisi": None,  # limitsiz
+        "sinyal_sayisi": None,  # unlimited
         "entity_count": None,
         "pack_count": None,
     },
@@ -39,7 +39,7 @@ TIER_LIMITS = {
 
 
 def _upsert_usage(sync_engine, tenant_id: int, tarih: date, **fields) -> None:
-    """Upsert gunluk metering_record satiri (sync — worker'dan cagrilir)."""
+    """Upsert the daily metering_record row (sync — called from the worker)."""
     with sync_engine.begin() as conn:
         stmt = pg_insert(MeteringRecord).values(
             tenant_id=tenant_id,
@@ -71,7 +71,7 @@ async def record_embedding(tenant_id: int) -> None:
 
 
 async def check_tier_limit(tenant_id: int, metric: str, current_value: int) -> bool:
-    """Free tier limit kontrolu. True → limit asilmadi, False → limit asildi."""
+    """Free tier limit check. True → limit not exceeded, False → limit exceeded."""
     def _check():
         engine = get_sync_engine()
         with engine.begin() as conn:
@@ -82,14 +82,14 @@ async def check_tier_limit(tenant_id: int, metric: str, current_value: int) -> b
             return True
         limit = TIER_LIMITS[tenant].get(metric)
         if limit is None:
-            return True  # paid tier — limitsiz
+            return True  # paid tier — unlimited
         return current_value < limit
 
     return await asyncio.to_thread(_check)
 
 
 async def get_current_usage(tenant_id: int) -> dict[str, int]:
-    """Bu ayki usage toplamini dondur."""
+    """Return the current month's usage totals."""
     engine = get_sync_engine()
     today = date.today()
     start_of_month = date(today.year, today.month, 1)
@@ -104,8 +104,8 @@ async def get_current_usage(tenant_id: int) -> dict[str, int]:
             ).all()
             return {
                 "sinyal_sayisi": sum(r.sinyal_sayisi for r in rows),
-                "entity_count": 0,  # tenant tablosundan gelir
-                "pack_count": 0,    # tenant tablosundan gelir
+                "entity_count": 0,  # comes from the tenant table
+                "pack_count": 0,    # comes from the tenant table
             }
 
     return await asyncio.to_thread(_query)

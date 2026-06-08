@@ -1,4 +1,4 @@
-"""Sinyal metninden metric cikarimi yapar (Haiku model)."""
+"""Extracts metrics from signal text (Haiku model)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from .base import structured_call
 
 _DEFAULT_SYSTEM = _load_prompt("extractor-default")
 if not _DEFAULT_SYSTEM:
-    _DEFAULT_SYSTEM = "Sen bir metrik cikarim ajanisin. Sinyal metninden olculebilir metrikler cikar."
+    _DEFAULT_SYSTEM = "You are a metric extraction agent. Extract measurable metrics from signal text."
 
 
 async def extract_metrics(
@@ -21,39 +21,39 @@ async def extract_metrics(
 ) -> list[ExtractedMetric]:
     system = pack_prompt or _DEFAULT_SYSTEM
 
-    # Pack metrik tanimlari varsa, modeli SADECE bu metric_key'leri
-    # kullanmaya zorla — aksi halde model serbest (or. 'finansal_duzenlilik')
-    # anahtarlar uretip pack'in kanonik anahtarlarini (or. 'mali_durum')
-    # ve onlara bagli KVKK/consent kurallarini atlar.
+    # If the pack defines metrics, force the model to use ONLY these
+    # metric_keys — otherwise the model may freely invent keys (e.g.
+    # 'financial_regularity') and bypass the pack's canonical keys (e.g.
+    # 'financial_status') along with their KVKK/consent rules.
     allowed_block = ""
     if pack_metrics:
-        satirlar = []
+        lines = []
         for m in pack_metrics:
             key = m.get("key")
             if not key:
                 continue
-            aciklama = m.get("prompt") or m.get("label") or ""
+            description = m.get("prompt") or m.get("label") or ""
             mtype = m.get("type", "float")
-            satirlar.append(f"  - {key} ({mtype}): {aciklama}")
-        if satirlar:
+            lines.append(f"  - {key} ({mtype}): {description}")
+        if lines:
             allowed_block = (
-                "\nYALNIZCA asagida tanimli metric_key'leri kullan. Listede "
-                "olmayan yeni anahtar URETME. Sinyalde karsiligi olmayan "
-                "metrikleri atla:\n" + "\n".join(satirlar) + "\n"
+                "\nUse ONLY the metric_keys defined below. Do NOT invent new "
+                "keys that aren't in the list. Skip metrics that have no "
+                "counterpart in the signal:\n" + "\n".join(lines) + "\n"
             )
 
-    user = f"""Entity: {entity_context if entity_context else "Bilinmiyor"}
+    user = f"""Entity: {entity_context if entity_context else "Unknown"}
 {allowed_block}
-Sinyal metni: {signal_text}
+Signal text: {signal_text}
 
-Yukaridaki sinyalden metrikleri cikar."""
+Extract metrics from the signal above."""
     result = await structured_call(
         model=config.AGENT_MODEL,
         system=system,
         user=user,
         schema=ExtractionResult,
-        tool_ad="extract_metrics",
-        tool_aciklama="Sinyal metninden metrik cikar",
+        tool_name="extract_metrics",
+        tool_description="Extract metrics from the signal text",
         tenant_id=tenant_id,
     )
     return result.metrics

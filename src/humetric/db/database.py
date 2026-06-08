@@ -1,14 +1,13 @@
-"""SQLAlchemy engine ve session yonetimi — async (runtime) + sync (alembic).
+"""SQLAlchemy engine and session management — async (runtime) + sync (alembic).
 
-PostgreSQL 15 + pgvector. RLS izolasyonu: get_tenant_db() session basinda
-set_config('app.tenant_id', ...) uygular; RLS politikasi fail-closed calisir.
+PostgreSQL 15 + pgvector. RLS isolation: get_tenant_db() applies
+set_config('app.tenant_id', ...) at session start; the RLS policy is fail-closed.
 """
 
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, Generator
 
-from fastapi import Depends as _Depends
 from pgvector.sqlalchemy import Vector  # noqa: F401
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -51,7 +50,7 @@ def get_sync_session_factory():
 
 
 def get_sync_db() -> Generator[Session, None, None]:
-    """Sync session — Alembic migration ve seed icin."""
+    """Sync session — for Alembic migrations and seeding."""
     SessionLocal = get_sync_session_factory()
     db = SessionLocal()
     try:
@@ -83,9 +82,9 @@ def get_async_session_factory():
 
 
 def get_admin_async_session_factory():
-    """Seed/migration icin superuser async session.
-    
-    DATABASE_URL (yonetim rolu, RLS bypass) kullanir.
+    """Superuser async session for seeding/migrations.
+
+    Uses DATABASE_URL (admin role, RLS bypass).
     """
     config.require_db()
     url = config.DATABASE_URL
@@ -100,7 +99,7 @@ def get_admin_async_session_factory():
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """FastAPI Depends: request-scoped async session (tenant baglami YOK)."""
+    """FastAPI Depends: request-scoped async session (NO tenant context)."""
     factory = get_async_session_factory()
     async with factory() as session:
         try:
@@ -110,13 +109,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_tenant_db(api_key_id: int, tenant_id: int) -> AsyncGenerator[AsyncSession, None]:
-    """Tenant baglami set edilmis async session.
+    """Async session with tenant context applied.
 
-    API key cozuldukten sonra tenant_id bilinir. Bu session'da PostgreSQL
-    GUC `app.tenant_id` set edilir; RLS politikalari bunu okur. Session
-    kapandiginda GUC sifirlanir (baglanti havuzu sizintisi yok).
+    The tenant_id is known once the API key is resolved. This session sets
+    the PostgreSQL GUC `app.tenant_id`; RLS policies read it. The GUC is
+    reset when the session closes (no connection-pool leakage).
 
-    set_config() parametrized query ile cagrilir — SQL injection guvenli.
+    set_config() is called with a parametrized query — safe from SQL injection.
     """
     factory = get_async_session_factory()
     async with factory() as session:

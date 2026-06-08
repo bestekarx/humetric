@@ -10,10 +10,10 @@ import secrets
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import date, datetime, timezone
-from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 import bcrypt as _bcrypt
@@ -21,12 +21,10 @@ from prometheus_client import make_asgi_app
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-_log = logging.getLogger(__name__)
-
 from . import config, kvkk
 from .auth import hash_key
-from .agents import curator, extractor, ranker
-from .config import AUTH_SECRET, HUMETRIC_BASE_URL
+from .agents import ranker
+from .config import AUTH_SECRET
 from .db.database import get_async_session_factory, get_db, get_tenant_db
 from .db.models import MeteringRecord, Task, Tenant
 from .embeddings import get_embedding_provider
@@ -44,9 +42,6 @@ from .services.stripe_service import (
     verify_webhook_signature,
 )
 from .services.usage_service import (
-    check_tier_limit,
-    record_embedding,
-    record_llm_tokens,
     record_signal,
 )
 from .schema import (
@@ -67,7 +62,6 @@ from .schema import (
     PackDetail,
     PackRead,
     PackWizardRequest,
-    PackWizardResponse,
     QueryRequest,
     QueryResponse,
     RankedResult,
@@ -75,19 +69,19 @@ from .schema import (
     RegisterResponse,
     RotateApiKeyResponse,
     SignalCreate,
-    SignalResult,
     SignalStatus,
     SignalTrace,
     TenantDashboardResponse,
     TenantKeysRead,
     TenantKeysUpdate,
-    TierLimitExceededResponse,
     UsageRecordOut,
     UsageReportResponse,
     VerifyEmailResponse,
     error_envelope,
 )
 from .store import Store, _metric_row_to_read
+
+_log = logging.getLogger(__name__)
 
 __version__ = "0.1.0"
 
@@ -143,8 +137,6 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 
 # ── Custom OpenAPI with Bearer auth (Spec 025) ─────────────────
-
-from fastapi.openapi.utils import get_openapi
 
 
 def custom_openapi():
@@ -1068,7 +1060,7 @@ def _entity_metric_to_read(m) -> EntityMetricRead:
 
 
 def _find_metric_def(pack_def: dict, metric_key: str) -> dict | None:
-    """Pack definition'dan metric tanimini bul."""
+    """Find the metric definition in the pack definition."""
     for m in pack_def.get("metrics", []):
         if m.get("key") == metric_key:
             return m
@@ -1161,7 +1153,7 @@ async def register(body: RegisterRequest, request: Request):
 
         return JSONResponse(status_code=201, content=RegisterResponse(
             tenant_id=tenant.id,
-            message="Dogrulama email'i gonderildi. Lutfen email'inizi kontrol edin.",
+            message="Verification email sent. Please check your inbox.",
         ).model_dump())
 
 
@@ -1171,7 +1163,7 @@ async def verify_email(token: str):
         tenant_id_str = _serializer.loads(token, max_age=86400)
         tenant_id = int(tenant_id_str)
     except (SignatureExpired, BadSignature):
-        return JSONResponse(status_code=400, content=error_envelope("invalid_verification_token", "Gecersiz veya suresi dolmus dogrulama linki").model_dump())
+        return JSONResponse(status_code=400, content=error_envelope("invalid_verification_token", "Invalid or expired verification link").model_dump())
 
     factory = get_async_session_factory()
     async with factory() as db:
@@ -1181,7 +1173,7 @@ async def verify_email(token: str):
         )
         tenant = await db.get(Tenant, tenant_id)
         if not tenant:
-            return JSONResponse(status_code=404, content=error_envelope("tenant_not_found", "Tenant bulunamadi").model_dump())
+            return JSONResponse(status_code=404, content=error_envelope("tenant_not_found", "Tenant not found").model_dump())
 
         show_api_key = not tenant.email_verified
         api_key = None
@@ -1222,7 +1214,7 @@ async def tenant_dashboard(
     tenant_id = request.state.tenant_id
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
-        raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant bulunamadi").model_dump())
+        raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
 
     today = date.today()
     first_of_month = today.replace(day=1)
@@ -1293,12 +1285,12 @@ async def billing_checkout(
     db: AsyncSession = Depends(_get_tenant_session),
 ):
     if tier not in ("pro", "enterprise"):
-        raise HTTPException(status_code=400, detail=error_envelope("validation_error", "Tier 'pro' veya 'enterprise' olmalidir").model_dump())
+        raise HTTPException(status_code=400, detail=error_envelope("validation_error", "Tier must be 'pro' or 'enterprise'").model_dump())
 
     tenant_id = request.state.tenant_id
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
-        raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant bulunamadi").model_dump())
+        raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
 
     if tenant.tier == tier:
         raise HTTPException(status_code=400, detail=error_envelope("validation_error", f"Zaten {tier} tier'dasiniz").model_dump())

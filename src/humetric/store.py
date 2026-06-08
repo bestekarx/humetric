@@ -1,11 +1,13 @@
-"""Veri erisim katmani — async SQLAlchemy operasyonlari.
+"""Data access layer — async SQLAlchemy operations.
 
-Entity, Tenant, ApiKey, Consent, AuditLog, Signal CRUD islemleri.
-Tum operasyonlar async session ile calisir.
+CRUD operations for Entity, Tenant, ApiKey, Consent, AuditLog, Signal.
+All operations run on an async session.
 """
 
 from __future__ import annotations
 
+import base64
+import os as _os
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -16,7 +18,7 @@ from .db.models import ApiKey, AuditLog, Consent, Entity, EntityMetric, MetricPa
 
 
 class Store:
-    """Async veri erisim katmani."""
+    """Async data access layer."""
 
     # --- Tenant ---
 
@@ -135,33 +137,6 @@ class Store:
         await db.commit()
         await db.refresh(metric)
         return metric
-
-    # --- Entity Embedding (Spec 022) ---
-
-    @staticmethod
-    async def update_entity_embedding(
-        db: AsyncSession, entity_id: str, tenant_id: int,
-        embed_text: str | None = None,
-    ) -> None:
-        """Entity'yi re-embed et. embed_text verilirse onu kullanir, yoksa metriklerden olusturur."""
-        from .embeddings import get_embedding_provider
-
-        entity = await Store.get_entity(db, entity_id, tenant_id)
-        if not entity:
-            return
-
-        if embed_text is None:
-            metrics = await Store.get_entity_metrics(db, entity_id, tenant_id)
-            embed_text = _build_embed_text_from_entity(entity, metrics)
-
-        if embed_text.strip():
-            provider = get_embedding_provider()
-            vectors = await provider.embed([embed_text])
-            entity.embedding = vectors[0]
-            entity.embedding_metni = embed_text
-            entity.updated_at = datetime.now(timezone.utc)
-            db.add(entity)
-            await db.commit()
 
     # --- Signal (Spec 022) ---
 
@@ -447,7 +422,7 @@ class Store:
     async def entity_type_exists_in_active_pack(
         db: AsyncSession, tenant_id: int, entity_type: str,
     ) -> tuple[str | None, MetricPack | None]:
-        """Aktif pack'lerde entity_type kullaniliyor mu? (pack_key, pack) doner."""
+        """Is entity_type used in any active pack? Returns (pack_key, pack)."""
         packs = await Store.list_packs(db, tenant_id, is_active=True)
         for p in packs:
             if p.definition.get("entity_type") == entity_type:
@@ -458,7 +433,7 @@ class Store:
     async def entity_type_exists_in_any_pack(
         db: AsyncSession, tenant_id: int, entity_type: str,
     ) -> tuple[str | None, MetricPack | None]:
-        """Tum pack'lerde (aktif+pasif) entity_type var mi? (pack_key, pack) doner."""
+        """Does entity_type exist in any pack (active+inactive)? Returns (pack_key, pack)."""
         packs = await Store.list_packs(db, tenant_id, is_active=None)
         for p in packs:
             if p.definition.get("entity_type") == entity_type:
@@ -469,12 +444,12 @@ class Store:
     async def validate_entity_against_pack(
         db: AsyncSession, tenant_id: int, entity_type: str, fields: dict,
     ) -> MetricPack:
-        """Entity'yi active pack'e karsi dogrula. Gecersiz durumda HTTPException raise eder."""
+        """Validate the entity against the active pack. Raises HTTPException if invalid."""
         from fastapi import HTTPException
 
         pack = await Store.get_active_pack_for_type(db, tenant_id, entity_type)
         if not pack:
-            # Herhangi bir aktif pack var mi?
+            # Is there any active pack at all?
             all_active = await Store.list_packs(db, tenant_id, is_active=True)
             if not all_active:
                 code, msg = "no_active_pack_for_type", "No active packs in this tenant"
@@ -505,7 +480,7 @@ class Store:
     async def check_entity_type_writable(
         db: AsyncSession, tenant_id: int, entity_type: str,
     ) -> None:
-        """Entity type yazilabilir mi? Aktif pack yoksa ve pasif pack varsa 403 raise."""
+        """Is the entity type writable? Raises 403 if there's no active pack but an inactive one exists."""
         active_pack = await Store.get_active_pack_for_type(db, tenant_id, entity_type)
         if active_pack and active_pack.is_active:
             return
@@ -546,9 +521,6 @@ class Store:
         if filters:
             for key, val in filters.items():
                 base = base.where(Entity.fields[key].as_string() == str(val))
-
-        vector_weight = config.HYBRID_VECTOR_WEIGHT
-        text_weight = config.HYBRID_TEXT_WEIGHT
 
         order_clauses = []
 
@@ -606,8 +578,7 @@ class Store:
     async def get_next_task(
         db: AsyncSession, batch_size: int = 5,
     ) -> list[Task]:
-        """SELECT ... FOR UPDATE SKIP LOCKED ile kuyruktan task ceker."""
-        from sqlalchemy import func
+        """Pull tasks from the queue with SELECT ... FOR UPDATE SKIP LOCKED."""
         now = datetime.now(timezone.utc)
         result = await db.execute(
             select(Task)
@@ -665,7 +636,7 @@ class Store:
     async def check_idempotency(
         db: AsyncSession, tenant_id: int, external_id: str, entity_id: str,
     ) -> Signal | None:
-        """Idempotency-Key kontrolu: ayni key 24 saat icinde kullanilmis mi?"""
+        """Idempotency-Key check: has the same key been used within the last 24 hours?"""
         from datetime import timedelta
         cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
         result = await db.execute(
@@ -805,7 +776,7 @@ def _build_embed_text_from_entity(entity: Entity, metrics: list[EntityMetric]) -
 def _build_embed_text_safe(
     entity: Entity, metrics: list[EntityMetric], pack_def: dict | None = None,
 ) -> str:
-    """Embedding metni olusturur; sensitive metrikleri atlar."""
+    """Build the embedding text, skipping sensitive metrics."""
     parts: list[str] = []
     if entity.free_text:
         parts.append(entity.free_text)
@@ -841,9 +812,6 @@ def _metric_row_to_read(row: EntityMetric) -> dict:
 
 
 # ── Encryption (Spec 025) ──────────────────────────────────────
-
-import base64
-import os as _os
 
 _ENCRYPTION_KEY: bytes | None = None
 

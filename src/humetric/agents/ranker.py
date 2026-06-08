@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from .. import config
-from ..schema import RankedResult, RankedResultLLM, RankingResult
+from ..schema import RankedResult, RankingResult
 from ..db.models import Entity
 from . import _load_prompt
 from .base import structured_call
@@ -48,8 +48,8 @@ En ilgili {min(top_k, len(entities))} entity'yi sirala."""
         system=_DEFAULT_SYSTEM,
         user=user,
         schema=RankingResult,
-        tool_ad="rank_entities",
-        tool_aciklama="Entity'leri sorguya gore puanla ve sirala",
+        tool_name="rank_entities",
+        tool_description="Score and rank entities against the query",
         tenant_id=tenant_id,
     )
 

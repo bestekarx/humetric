@@ -1,4 +1,4 @@
-"""Cikarilan metrikleri dogrular ve nihai degerleri belirler (Sonnet model)."""
+"""Validates extracted metrics and determines their final values (Sonnet model)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from .base import structured_call
 
 _DEFAULT_SYSTEM = _load_prompt("curator-default")
 if not _DEFAULT_SYSTEM:
-    _DEFAULT_SYSTEM = "Sen bir metrik kuratorusun. Cikarilan metrikleri mevcut profille karsilastirip dogrula."
+    _DEFAULT_SYSTEM = "You are a metric curation agent. Compare the extracted metrics against the existing profile and validate them."
 
 
 async def curate_metrics(
@@ -29,32 +29,32 @@ async def curate_metrics(
     system = pack_prompt or _DEFAULT_SYSTEM
 
     existing_str = "\n".join(
-        f"  - {m.metric_key}: {m.value:.2f} (guven: {m.confidence:.2f})"
+        f"  - {m.metric_key}: {m.value:.2f} (confidence: {m.confidence:.2f})"
         for m in existing_metrics
-    ) if existing_metrics else "  (mevcut metrik yok)"
+    ) if existing_metrics else "  (no existing metrics)"
 
     extracted_str = "\n".join(
-        f"  - {e.metric_key}: {e.value:.2f} (guven: {e.confidence:.2f}, gerekce: {e.reasoning})"
+        f"  - {e.metric_key}: {e.value:.2f} (confidence: {e.confidence:.2f}, reasoning: {e.reasoning})"
         for e in extracted
     )
 
-    user = f"""Entity: {entity_context if entity_context else "Bilinmiyor"}
+    user = f"""Entity: {entity_context if entity_context else "Unknown"}
 
-Mevcut metrikler:
+Existing metrics:
 {existing_str}
 
-Cikarilan metrikler:
+Extracted metrics:
 {extracted_str}
 
-Her cikarilan metrik icin karar ver."""
+Decide on each extracted metric."""
 
     result = await structured_call(
         model=config.CURATOR_MODEL,
         system=system,
         user=user,
         schema=CurationResult,
-        tool_ad="curate_metrics",
-        tool_aciklama="Cikarilan metrikleri dogrula ve nihai degerleri belirle",
+        tool_name="curate_metrics",
+        tool_description="Validate the extracted metrics and determine final values",
         tenant_id=tenant_id,
     )
 
@@ -65,8 +65,8 @@ Her cikarilan metrik icin karar ver."""
 
     existing_keys = {m.metric_key for m in existing_metrics}
     extracted_map = {e.metric_key: e for e in extracted}
-    # Kurator "action" alanini serbest metin olarak doldurur (skip/reject/red/
-    # insert/ekle/...). Metrigi dusuren aksiyonlari normalize et.
+    # The curator fills the "action" field as free text (skip/reject/red/
+    # insert/ekle/...). Normalize the actions that drop a metric.
     DROP_ACTIONS = {"skip", "reject", "red", "atla", "drop", "ignore", "discard"}
 
     final_metrics: list[FinalMetric] = []
@@ -75,27 +75,28 @@ Her cikarilan metrik icin karar ver."""
         src_confidence = dec.confidence
 
         if dec.action.strip().lower() in DROP_ACTIONS:
-            # LLM ilk kez gozlemlenen, yuksek guvenli bir metrigi
-            # nondeterministik olarak dusurebiliyor (skip/reject). Mevcut
-            # profilde olmayan ve esik ustu cikarilan metrikleri ilk gozlem
-            # olarak deterministik sekilde ekle — kurator yargisi mevcut
-            # metriklerin guncellenmesinde korunur.
+            # The LLM can nondeterministically drop (skip/reject) a metric
+            # that's being observed for the first time with high confidence.
+            # Deterministically add metrics that aren't in the existing
+            # profile and were extracted above the threshold as a first
+            # observation — curator judgment is preserved for updates to
+            # existing metrics.
             is_new_metric = dec.metric_key not in existing_keys
             ext = extracted_map.get(dec.metric_key)
             first_obs_conf = ext.confidence if ext else 0.0
             if not (is_new_metric and first_obs_conf >= config.GUVEN_ESIGI):
                 continue
-            # override: kurator deger/guven doldurmamis (0) olabilir,
-            # ilk gozlem icin cikarim degerlerini temel al.
+            # override: the curator may have left value/confidence empty (0);
+            # fall back to the extraction values for the first observation.
             src_value = ext.value
             src_confidence = ext.confidence
 
         if src_confidence < config.GUVEN_ESIGI:
             continue
 
-        # DB ck_entity_metric_value: value BETWEEN -1 AND 1. LLM bazen
-        # aralik disi deger dondurebiliyor; insert'in (ve tum task
-        # transaction'inin) patlamamasi icin kelepcele.
+        # DB ck_entity_metric_value: value BETWEEN -1 AND 1. The LLM
+        # sometimes returns out-of-range values; clamp so the insert
+        # (and the whole task transaction) doesn't blow up.
         final_value = max(-1.0, min(1.0, src_value))
         final_confidence = max(0.0, min(1.0, src_confidence))
 
@@ -114,7 +115,7 @@ Her cikarilan metrik icin karar ver."""
 
 
 def _type_matches(value: float, expected_type: str) -> bool:
-    """Value tipi expected_type ile uyumlu mu?"""
+    """Does the value's type match expected_type?"""
     if expected_type == "float":
         return isinstance(value, (int, float))
     if expected_type == "int":

@@ -24,7 +24,7 @@ def log_call(
     latency_ms: int,
     request_id: str | None = None,
 ) -> None:
-    """Agent cagrisini logs/agent_calls.jsonl'e tek satir ekler. Hata yutulur."""
+    """Append a single line for the agent call to logs/agent_calls.jsonl. Errors are swallowed."""
     try:
         satir = {
             "ts": datetime.now(timezone.utc).isoformat(),

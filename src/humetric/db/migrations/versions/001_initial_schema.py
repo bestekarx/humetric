@@ -33,7 +33,7 @@ def upgrade():
     op.execute("INSERT INTO tenant (kod, ad) VALUES ('default', 'Default Tenant')")
 
     for tablo in ("api_key", "entity", "entity_metric", "usage_record"):
-        op.execute(f"CREATE ROLE humetric_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'humetric_app'")
+        op.execute("CREATE ROLE humetric_app WITH LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'humetric_app'")
         break
 
     op.create_table(
@@ -129,7 +129,8 @@ def upgrade():
             pass
 
     # Insert a seed API key for the default tenant (full scopes, no expiry)
-    import hashlib, secrets
+    import hashlib
+    import secrets
     seed_key = f"hm_{secrets.token_hex(24)}"
     key_hash = hashlib.sha256(seed_key.encode()).hexdigest()
     key_prefix = seed_key[:10]

@@ -263,7 +263,7 @@ class ApiKeyRead(BaseModel):
 
 
 class ApiKeyCreated(BaseModel):
-    """API key olusturuldugunda donen yanit — full_key yalniz burada gorunur."""
+    """Response returned when an API key is created — full_key is only ever shown here."""
     model_config = ConfigDict(populate_by_name=True)
 
     id: int
@@ -550,7 +550,7 @@ class RotateApiKeyResponse(BaseModel):
 
     api_key: str
     api_key_prefix: str
-    message: str = "API key yenilendi. Eski anahtar gecersiz."
+    message: str = "API key rotated. The old key is now invalid."
 
 
 # ── Billing (Spec 026) ───────────────────────────────────────────

@@ -5,10 +5,8 @@ Note: bu modul Store.hybrid_search_entities() tarafindan kullanilir.
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .. import config
 from ..db.models import Entity
 
 
@@ -21,7 +19,7 @@ async def hybrid_search(
     top_k: int = 10,
     query_embedding: list[float] | None = None,
 ) -> list[Entity]:
-    """Entity'leri hybrid RAG ile ara. Deprecated: Store.hybrid_search_entities() kullanin."""
+    """Search entities with hybrid RAG. Deprecated: use Store.hybrid_search_entities()."""
     from ..store import Store
     return await Store.hybrid_search_entities(
         db, tenant_id=tenant_id, query_embedding=query_embedding,

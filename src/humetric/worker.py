@@ -1,7 +1,7 @@
-"""Worker process — async task queue isleme (Spec 024).
+"""Worker process — async task queue processing (Spec 024).
 
-PostgreSQL SELECT FOR UPDATE SKIP LOCKED ile kuyruktan task ceker,
-extract → curate → write metrics → re-embed pipeline'ini calistirir.
+Pulls tasks from the queue with PostgreSQL SELECT FOR UPDATE SKIP LOCKED
+and runs the extract → curate → write metrics → re-embed pipeline.
 Exponential backoff retry, graceful shutdown (SIGTERM/SIGINT).
 """
 
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import signal
 from datetime import datetime, timezone
 
@@ -17,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config, kvkk
 from .agents import curator, extractor
-from .db.database import get_tenant_db
 from .store import Store, _build_embed_text_safe
 
 _log = logging.getLogger(__name__)
@@ -36,7 +34,7 @@ signal.signal(signal.SIGINT, _handle_shutdown)
 
 
 async def process_signal_task(db: AsyncSession, task) -> None:
-    """Tek bir signal task'ini isler: extract → curate → write → embed."""
+    """Process a single signal task: extract → curate → write → embed."""
     payload = task.payload
     entity_id = payload.get("entity_id")
     text = payload.get("text", "")
@@ -58,7 +56,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
     final_metrics = await curator.curate_metrics(extracted, existing_metrics, ctx, pack_def, tenant_id=task.tenant_id)
 
-    atlanan_hassas: list[str] = []
+    skipped_sensitive: list[str] = []
 
     for fm in final_metrics:
         metric_def = _find_metric_def(pack_def, fm.metric_key)
@@ -69,7 +67,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
                     db, entity_id, consent_scope, task.tenant_id,
                 )
                 if not has_consent:
-                    atlanan_hassas.append(fm.metric_key)
+                    skipped_sensitive.append(fm.metric_key)
                     continue
 
         trace = {
@@ -114,7 +112,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
 
 
 async def process_re_embed_task(db: AsyncSession, task) -> None:
-    """embedding_pending=true olan entity'yi yeniden embed eder."""
+    """Re-embed an entity whose embedding_pending flag is true."""
     payload = task.payload
     entity_id = payload.get("entity_id")
 
@@ -131,8 +129,7 @@ async def process_re_embed_task(db: AsyncSession, task) -> None:
 
 
 async def handle_failure(db: AsyncSession, task, exc: Exception) -> None:
-    """Hata durumunda retry veya permanent fail karari verir."""
-    from .embeddings import EmbeddingProvider
+    """Decide whether to retry or permanently fail on error."""
 
     is_retryable = True
     status_code = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
@@ -162,7 +159,7 @@ async def handle_failure(db: AsyncSession, task, exc: Exception) -> None:
 
 
 async def process_one_task(db: AsyncSession, task) -> None:
-    """Tek bir task isleme (dispatch by type)."""
+    """Process a single task (dispatch by type)."""
     from sqlalchemy import text
     await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(task.tenant_id)})
     try:
@@ -179,9 +176,9 @@ async def process_one_task(db: AsyncSession, task) -> None:
 
     except Exception as exc:
         _log.exception("Task %d error: %s", task.id, exc)
-        # Hatali flush session'i kirletir (PendingRollbackError); failure
-        # kaydini yazabilmek ve sonraki task'lari zehirlememek icin once
-        # rollback yap. set_config tekrar gerekli cunku rollback GUC'u sifirlar.
+        # A failed flush taints the session (PendingRollbackError); roll back
+        # first so we can write the failure record and avoid poisoning the
+        # next tasks. set_config must be re-applied since rollback resets the GUC.
         try:
             await db.rollback()
             await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(task.tenant_id)})
@@ -200,11 +197,11 @@ async def main():
     _log.info("Worker starting. Poll interval: %.1fs, batch size: %d, max retries: %d",
               config.WORKER_POLL_INTERVAL_S, config.WORKER_BATCH_SIZE, config.TASK_MAX_RETRIES)
 
-    # Worker, RLS-forced `task` tablosunu tum tenant'lar icin taramak
-    # zorunda. Kisitli app rolu (saha_app) GUC set edilmeden sifir satir
-    # gorur (fail-closed), bu yuzden task claim'i admin (superuser, RLS
-    # bypass) session ile yapilir. Tenant izolasyonu process_one_task
-    # icinde GUC + sorgu seviyesinde tenant_id filtresiyle korunur.
+    # The worker has to scan the RLS-forced `task` table across all tenants.
+    # The restricted app role sees zero rows without the GUC set (fail-closed),
+    # so task claiming uses an admin (superuser, RLS-bypass) session. Tenant
+    # isolation is preserved inside process_one_task via the GUC plus a
+    # query-level tenant_id filter.
     from .db.database import get_admin_async_session_factory
 
     factory = get_admin_async_session_factory()

@@ -1,4 +1,4 @@
-"""Email servisi — dogrulama, welcome, limit uyarisi (Spec 026)."""
+"""Email service — verification, welcome, limit warning emails (Spec 026)."""
 
 from __future__ import annotations
 
@@ -35,22 +35,22 @@ async def send_email(to_email: str, subject: str, html_body: str) -> bool:
 
 async def send_verification_email(to_email: str, token: str) -> bool:
     verify_url = f"{HUMETRIC_BASE_URL}/v1/verify-email?token={token}"
-    subject = "HuMetric — Email Dogrulamasi"
+    subject = "HuMetric — Email Verification"
     html_body = f"""
-    <h2>HuMetric'e Hos Geldiniz!</h2>
-    <p>Email adresinizi dogrulamak icin asagidaki linke tiklayin:</p>
+    <h2>Welcome to HuMetric!</h2>
+    <p>Click the link below to verify your email address:</p>
     <p><a href="{verify_url}">{verify_url}</a></p>
-    <p>Bu link 24 saat gecerlidir.</p>
+    <p>This link is valid for 24 hours.</p>
     """
     return await send_email(to_email, subject, html_body)
 
 
 async def send_welcome_email(to_email: str, api_key_prefix: str) -> bool:
-    subject = "HuMetric — API Key'iniz Hazir"
+    subject = "HuMetric — Your API Key is Ready"
     html_body = f"""
-    <h2>Email Dogrulamasi Tamamlandi!</h2>
-    <p>API key'iniz basariyla olusturuldu. Key prefix: <code>{api_key_prefix}</code></p>
-    <p>Dokumantasyon: <a href="{HUMETRIC_BASE_URL}/docs">{HUMETRIC_BASE_URL}/docs</a></p>
+    <h2>Email Verification Complete!</h2>
+    <p>Your API key has been created successfully. Key prefix: <code>{api_key_prefix}</code></p>
+    <p>Documentation: <a href="{HUMETRIC_BASE_URL}/docs">{HUMETRIC_BASE_URL}/docs</a></p>
     <p>Dashboard: <a href="{HUMETRIC_BASE_URL}/dashboard">{HUMETRIC_BASE_URL}/dashboard</a></p>
     """
     return await send_email(to_email, subject, html_body)
@@ -58,11 +58,11 @@ async def send_welcome_email(to_email: str, api_key_prefix: str) -> bool:
 
 async def send_limit_warning(to_email: str, usage: int, limit: int) -> bool:
     pct = (usage / limit) * 100 if limit > 0 else 0
-    subject = f"HuMetric — Kullanim Uyarisi (%{pct:.0f})"
+    subject = f"HuMetric — Usage Warning ({pct:.0f}%)"
     html_body = f"""
-    <h2>Kullanim Limitinize Yaklasiyorsunuz</h2>
-    <p>Mevcut kullanim: {usage} / {limit} (%{pct:.0f})</p>
-    <p>Limit asiminda API istekleriniz reddedilecektir.</p>
-    <p>Yukseltmek icin: <a href="{HUMETRIC_BASE_URL}/pricing">Planlar</a></p>
+    <h2>You're Approaching Your Usage Limit</h2>
+    <p>Current usage: {usage} / {limit} ({pct:.0f}%)</p>
+    <p>Once the limit is exceeded, your API requests will be rejected.</p>
+    <p>To upgrade: <a href="{HUMETRIC_BASE_URL}/pricing">Plans</a></p>
     """
     return await send_email(to_email, subject, html_body)

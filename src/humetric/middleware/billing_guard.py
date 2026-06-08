@@ -1,7 +1,7 @@
-"""Tier limit kontrol middleware'i — free tier sinyal/entity/pack limit asimi (Spec 026).
+"""Tier limit guard middleware — enforces free-tier signal/entity/pack limits (Spec 026).
 
-ENFORCE_TIER_LIMITS=true ise free-tier tenant'lar icin POST islemlerini
-kontrol eder ve limit asiminda 402 tier_limit_exceeded dondurur.
+When ENFORCE_TIER_LIMITS=true, checks POST operations for free-tier tenants
+and returns 402 tier_limit_exceeded once the limit is exceeded.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from ..config import (
     FREE_TIER_PACK_LIMIT,
     FREE_TIER_SIGNAL_LIMIT,
 )
-from ..schema import TierLimitExceededResponse, error_envelope
+from ..schema import TierLimitExceededResponse
 
 _log = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class BillingGuardMiddleware(BaseHTTPMiddleware):
 
     @staticmethod
     async def _get_current_usage(db, tenant_id: int, metric_key: str) -> int:
-        """Tenant'in bu ayki kullanımını döndürür."""
+        """Return the tenant's usage for the current month."""
         from datetime import date
         from sqlalchemy import func, select
 

@@ -1,7 +1,7 @@
-"""Embedding saglayici soyutlamasi — ABC + Voyage/OpenAI/Cohere implementasyonu (Spec 024).
+"""Embedding provider abstraction — ABC + Voyage/OpenAI/Cohere implementations (Spec 024).
 
-Voyage free tier 3 RPM icin built-in backoff (22s, 6 retry).
-Config'den saglayici degistirilebilir; tenant override desteklenir.
+Built-in backoff for Voyage's free tier 3 RPM limit (22s, 6 retries).
+Provider is configurable via config; tenant overrides are supported.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ _log = logging.getLogger(__name__)
 
 
 class EmbeddingProvider(ABC):
-    """Soyut embedding saglayici."""
+    """Abstract embedding provider."""
 
     def __init__(self, dimensions: int, backoff_s: float = 22.0, max_retries: int = 6):
         self.dimensions = dimensions
@@ -24,7 +24,7 @@ class EmbeddingProvider(ABC):
 
     @abstractmethod
     async def embed(self, texts: list[str]) -> list[list[float]]:
-        """Metin listesini embedding vektorlerine donustur."""
+        """Convert a list of texts into embedding vectors."""
         ...
 
     def _is_retryable(self, exc: Exception) -> bool:
@@ -40,7 +40,7 @@ class EmbeddingProvider(ABC):
 
 
 class VoyageEmbeddingProvider(EmbeddingProvider):
-    """Voyage AI embedding saglayicisi."""
+    """Voyage AI embedding provider."""
 
     def __init__(
         self,
@@ -58,7 +58,7 @@ class VoyageEmbeddingProvider(EmbeddingProvider):
     def _get_client(self):
         if self._client is None:
             import voyageai
-            # voyageai>=0.2: embed() Client uzerindedir, modul seviyesinde degil.
+            # voyageai>=0.2: embed() lives on the Client, not at module level.
             self._client = voyageai.Client(api_key=self.api_key)
         return self._client
 
@@ -99,7 +99,7 @@ class VoyageEmbeddingProvider(EmbeddingProvider):
 
 
 class OpenAIEmbeddingProvider(EmbeddingProvider):
-    """OpenAI embedding saglayicisi — text-embedding-3-small, 1536 dim."""
+    """OpenAI embedding provider — text-embedding-3-small, 1536 dim."""
 
     def __init__(
         self,
@@ -157,7 +157,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
 
 class CohereEmbeddingProvider(EmbeddingProvider):
-    """Cohere embedding saglayicisi — embed-english-v3.0, 1024 dim."""
+    """Cohere embedding provider — embed-english-v3.0, 1024 dim."""
 
     def __init__(
         self,
@@ -218,10 +218,10 @@ def get_embedding_provider(
     tenant_id: int | None = None,
     voyage_api_key: str | None = None,
 ) -> EmbeddingProvider:
-    """Config + tenant override'a gore embedding saglayici dondurur.
+    """Return the embedding provider based on config + tenant override.
 
-    Oncelik: tenant.embedding_provider > HUMETRIC_EMBEDDING_PROVIDER env > varsayilan (voyage).
-    voyage_api_key verilirse Voyage icin platform key'i yerine bu kullanilir (BYO-key).
+    Priority: tenant.embedding_provider > HUMETRIC_EMBEDDING_PROVIDER env > default (voyage).
+    If voyage_api_key is given, it's used for Voyage instead of the platform key (BYO-key).
     """
     from . import config
 
@@ -255,7 +255,7 @@ def get_embedding_provider(
 
 
 async def get_tenant_embedding_provider(tenant_id: int, db) -> EmbeddingProvider:
-    """Tenant override + BYO-key kontrolu yaparak embedding saglayici dondurur."""
+    """Return the embedding provider, applying tenant override + BYO-key checks."""
     from . import config
     from .store import Store
 

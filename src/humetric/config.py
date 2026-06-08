@@ -1,4 +1,4 @@
-"""Merkezi yapilandirma: database URL, API key'ler, embedding ayarlari."""
+"""Central configuration: database URL, API keys, embedding settings."""
 
 from __future__ import annotations
 
@@ -89,7 +89,7 @@ HUMETRIC_BASE_URL = os.environ.get("HUMETRIC_BASE_URL", "http://localhost:8002")
 # MCP (Spec 026)
 HUMETRIC_MCP_API_KEY = os.environ.get("HUMETRIC_MCP_API_KEY", "")
 
-# Self-service kayit (Spec 026)
+# Self-service registration (Spec 026)
 REGISTER_RATE_LIMIT_PER_HOUR = int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT", "3"))
 FREE_TIER_SIGNAL_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_SIGNAL_LIMIT", "1000"))
 FREE_TIER_ENTITY_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_ENTITY_LIMIT", "10"))
@@ -97,32 +97,32 @@ FREE_TIER_PACK_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_PACK_LIMIT", "1"))
 
 
 def require_keys() -> None:
-    """API key'lerin varligini kontrol et, eksikse hata ver."""
-    eksik = [
-        ad
-        for ad, deger in (
+    """Check that the required API keys are present; raise if any are missing."""
+    missing = [
+        name
+        for name, value in (
             ("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY),
             ("VOYAGE_API_KEY", VOYAGE_API_KEY),
         )
-        if not deger
+        if not value
     ]
-    if eksik:
+    if missing:
         raise RuntimeError(
-            f"Eksik API key: {', '.join(eksik)}. .env dosyasini doldurun (.env.example'a bakin)."
+            f"Missing API key(s): {', '.join(missing)}. Fill in your .env file (see .env.example)."
         )
 
 
 def require_db() -> None:
-    """DB baglantisi gerektiren komutlardan once cagir."""
-    eksik = [
-        ad
-        for ad, deger in (
+    """Call this before any command that requires a DB connection."""
+    missing = [
+        name
+        for name, value in (
             ("DATABASE_URL", DATABASE_URL),
             ("HUMETRIC_AUTH_SECRET", AUTH_SECRET),
         )
-        if not deger
+        if not value
     ]
-    if eksik:
+    if missing:
         raise RuntimeError(
-            f"Eksik DB/auth config: {', '.join(eksik)}. .env dosyasini doldurun."
+            f"Missing DB/auth config: {', '.join(missing)}. Fill in your .env file."
         )

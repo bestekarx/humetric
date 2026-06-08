@@ -66,13 +66,12 @@ async def verify_webhook_signature(payload: bytes, sig_header: str) -> stripe.Ev
 async def handle_webhook(event: stripe.Event, db_session) -> dict[str, Any]:
     """Webhook event isleme — tenant durumunu gunceller."""
     from ..db.models import Tenant
-    from sqlalchemy import select, update
+    from sqlalchemy import update
 
     event_type = event["type"]
     data = event["data"]["object"]
     customer_id = data.get("customer")
-    tenant_id_str = data.get("metadata", {}).get("tenant_id") or event["data"]["object"].get("metadata", {}).get("tenant_id")
-    
+
     if not customer_id:
         logger.warning("Webhook missing customer_id: %s", event_type)
         return {"handled": False, "reason": "no_customer_id"}
@@ -85,10 +84,6 @@ async def handle_webhook(event: stripe.Event, db_session) -> dict[str, Any]:
         tier = data.get("metadata", {}).get("tier", "pro")
     elif event_type == "invoice.paid":
         subscription_status = "active"
-        sub = stripe.Subscription.retrieve(data["subscription"])
-        if sub:
-            from datetime import datetime
-            subscription_end = datetime.fromtimestamp(sub.current_period_end)
     elif event_type == "invoice.payment_failed":
         subscription_status = "past_due"
     elif event_type == "customer.subscription.deleted":

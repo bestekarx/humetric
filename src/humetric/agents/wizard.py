@@ -19,7 +19,7 @@ if not _DEFAULT_SYSTEM:
 
 
 async def generate_pack_yaml(text: str, entity_type_hint: str | None = None, tenant_id: int | None = None) -> PackWizardResponse:
-    """Serbest metinden pack YAML uret."""
+    """Generate a pack YAML from free-text description."""
     from .base import structured_call
 
     user_msg = f"Domain description: {text}"
@@ -38,8 +38,8 @@ async def generate_pack_yaml(text: str, entity_type_hint: str | None = None, ten
             system=_DEFAULT_SYSTEM,
             user=user_msg,
             schema=PackDefinition,
-            tool_ad="generate_pack",
-            tool_aciklama="Generate a complete Metric Pack YAML definition from the domain description",
+            tool_name="generate_pack",
+            tool_description="Generate a complete Metric Pack YAML definition from the domain description",
             tenant_id=tenant_id,
         )
 

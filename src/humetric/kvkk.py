@@ -1,7 +1,6 @@
-"""KVKK/GDPR uyumluluk kontrolleri — consent, hassas metrik filtreleme, audit log.
+"""KVKK/GDPR compliance checks — consent, sensitive metric filtering, audit log.
 
-Saha kvkk_check.py pattern'inden uyarlanmistir.
-Spec 023: pack-driven per-metric visible_to filtreleme tamamlandi.
+Spec 023: pack-driven per-metric visible_to filtering completed.
 """
 
 from __future__ import annotations
@@ -19,9 +18,9 @@ _log = logging.getLogger(__name__)
 async def check_consent(
     db: AsyncSession, entity_id: str, scope: str, tenant_id: int,
 ) -> bool:
-    """Entity'nin belirtilen kapsamda gecerli consent'i var mi?
+    """Does the entity have valid consent in the given scope?
 
-    Granted status + expires_at gecmemis olmali.
+    Status must be granted and expires_at must not be in the past.
     """
     from .db.models import Consent
     from sqlalchemy import select
@@ -45,7 +44,7 @@ async def check_consent(
 async def check_consent_for_metric(
     db: AsyncSession, entity_id: str, requires_consent_scope: str, tenant_id: int,
 ) -> bool:
-    """Metric'in requires_consent_scope'u icin gecerli consent var mi?"""
+    """Is there valid consent for the metric's requires_consent_scope?"""
     if not requires_consent_scope:
         return True
     return await check_consent(db, entity_id, requires_consent_scope, tenant_id)
@@ -59,20 +58,20 @@ async def filter_sensitive_metrics(
     entity_id: str | None = None,
     tenant_id: int | None = None,
 ) -> list[dict]:
-    """Hassas metrikleri consent + API key scope'larina gore filtrele.
+    """Filter sensitive metrics based on consent + API key scopes.
 
-    KVKK okuma kapisi (consent okuma gorunurlugune baglidir):
-    Hassas bir metrik (kvkk.sensitive_metrics) icin:
-      - Metrigin `requires_consent_scope`'u icin gecerli consent VARSA → gorunur
-        (consent okuma iznini saglar; visible_to/scope kontrolu gevsetilir).
-      - Consent YOKSA → `visible_to` scope kapisina dusulur: API key'in
-        scope'lari visible_to ile kesisiyorsa gorunur (or. admin), yoksa gizlenir.
-    Consent kaldirilinca metrik okumada da gizlenir.
+    KVKK read gate (depends on consent-driven visibility):
+    For a sensitive metric (kvkk.sensitive_metrics):
+      - If valid consent EXISTS for the metric's `requires_consent_scope` → visible
+        (consent grants read access; the visible_to/scope check is relaxed).
+      - If consent is ABSENT → falls back to the `visible_to` scope gate: visible
+        if the API key's scopes intersect visible_to (e.g. admin), hidden otherwise.
+    Revoking consent immediately hides the metric from reads again.
 
-    db/entity_id/tenant_id verilmezse consent kontrolu yapilamaz; bu durumda
-    yalnizca visible_to/scope kapisi uygulanir (geriye donuk uyumlu).
-    visible_to bossa ve consent gerekmiyorsa → herkes gorur.
-    pack yoksa → tum metrikler gorunur (filtre uygulanmaz).
+    Without db/entity_id/tenant_id, consent cannot be checked; in that case
+    only the visible_to/scope gate is applied (backward compatible).
+    If visible_to is empty and consent isn't required → everyone sees it.
+    Without a pack → all metrics are visible (no filtering applied).
     """
     if not pack:
         return metrics
@@ -115,7 +114,7 @@ async def write_audit_log(
     details: dict | None = None,
     api_key_id: int | None = None,
 ) -> None:
-    """Denetim kaydi yaz."""
+    """Write an audit log entry."""
     await Store.write_audit_log(
         db,
         {

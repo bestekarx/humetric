@@ -1,4 +1,4 @@
-"""Captcha servisi — reCAPTCHA v3 / hCaptcha dogrulamasi (Spec 026)."""
+"""Captcha service — reCAPTCHA v3 / hCaptcha verification (Spec 026)."""
 
 from __future__ import annotations
 
