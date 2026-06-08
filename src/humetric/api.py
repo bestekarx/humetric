@@ -1145,17 +1145,46 @@ async def register(body: RegisterRequest, request: Request):
         if existing.scalar_one_or_none():
             return JSONResponse(status_code=409, content=error_envelope("email_already_registered", "This email is already registered").model_dump())
 
+        auto_verify = not config.REQUIRE_EMAIL_VERIFICATION
         tenant = Tenant(
             code=f"t_{secrets.token_hex(6)}",
             name=body.email.split("@")[0],
             email=body.email,
             password_hash=_bcrypt.hashpw(body.password.encode()[:72], _bcrypt.gensalt()).decode(),
-            email_verified=False,
-            subscription_status="inactive",
+            email_verified=auto_verify,
+            subscription_status="active" if auto_verify else "inactive",
             tier="free",
         )
         db.add(tenant)
         await db.flush()
+
+        if auto_verify:
+            # No email step: mint the default API key now and return it once.
+            from .db.models import ApiKey
+            from datetime import timedelta
+
+            await db.execute(
+                text("SELECT set_config('app.tenant_id', :t, false)"),
+                {"t": str(tenant.id)},
+            )
+            raw_key = f"hm_live_{secrets.token_urlsafe(32)}"
+            db.add(ApiKey(
+                tenant_id=tenant.id,
+                prefix="hm_live",
+                key_hash=hash_key(raw_key),
+                scopes=["signals:write", "entities:read", "entities:write", "signals:read", "query", "packs:read", "packs:admin"],
+                label="Default API Key",
+                expires_at=datetime.now(timezone.utc) + timedelta(days=730),
+            ))
+            await db.commit()
+            return JSONResponse(status_code=201, content=RegisterResponse(
+                tenant_id=tenant.id,
+                message="Registration complete. Your API key is shown only once.",
+                email_verification_sent=False,
+                email_verified=True,
+                api_key=raw_key,
+            ).model_dump())
+
         await db.commit()
 
         token = _serializer.dumps(str(tenant.id))

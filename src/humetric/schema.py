@@ -523,6 +523,10 @@ class RegisterResponse(BaseModel):
     tenant_id: int
     message: str
     email_verification_sent: bool = True
+    email_verified: bool = False
+    # Returned only when email verification is disabled and the tenant is
+    # auto-activated at registration; shown once, never persisted in plaintext.
+    api_key: str | None = None
 
 
 class VerifyEmailResponse(BaseModel):

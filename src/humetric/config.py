@@ -91,6 +91,11 @@ HUMETRIC_MCP_API_KEY = os.environ.get("HUMETRIC_MCP_API_KEY", "")
 
 # Self-service registration (Spec 026)
 REGISTER_RATE_LIMIT_PER_HOUR = int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT", "3"))
+# When false, /register auto-verifies the tenant and returns the API key
+# immediately (no email step). Defaults to requiring verification.
+REQUIRE_EMAIL_VERIFICATION = (
+    os.environ.get("HUMETRIC_REQUIRE_EMAIL_VERIFICATION", "true").lower() != "false"
+)
 FREE_TIER_SIGNAL_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_SIGNAL_LIMIT", "1000"))
 FREE_TIER_ENTITY_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_ENTITY_LIMIT", "10"))
 FREE_TIER_PACK_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_PACK_LIMIT", "1"))
