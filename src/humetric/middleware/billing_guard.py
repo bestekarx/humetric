@@ -62,6 +62,12 @@ class BillingGuardMiddleware(BaseHTTPMiddleware):
             if not tenant or tenant.tier != "free":
                 return await call_next(request)
 
+            # Full BYOK tenants bear their own LLM + embedding costs, so the
+            # free-tier quota (which exists to cap the platform's spend) does
+            # not apply to them.
+            if tenant.anthropic_key_encrypted and tenant.voyage_key_encrypted:
+                return await call_next(request)
+
             metric_key, limit = limit_info
 
             current_value = await self._get_current_usage(db, tenant_id, metric_key)

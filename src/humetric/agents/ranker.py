@@ -20,6 +20,7 @@ async def rank_entities(
     include_reasoning: bool = False,
     top_k: int = 10,
     tenant_id: int | None = None,
+    api_key: str | None = None,
 ) -> list[RankedResult]:
     if not entities:
         return []
@@ -51,6 +52,7 @@ En ilgili {min(top_k, len(entities))} entity'yi sirala."""
         tool_name="rank_entities",
         tool_description="Score and rank entities against the query",
         tenant_id=tenant_id,
+        api_key=api_key,
     )
 
     ranked: list[RankedResult] = []

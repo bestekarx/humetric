@@ -18,6 +18,7 @@ async def extract_metrics(
     pack_prompt: str | None = None,
     pack_metrics: list[dict] | None = None,
     tenant_id: int | None = None,
+    api_key: str | None = None,
 ) -> list[ExtractedMetric]:
     system = pack_prompt or _DEFAULT_SYSTEM
 
@@ -55,5 +56,6 @@ Extract metrics from the signal above."""
         tool_name="extract_metrics",
         tool_description="Extract metrics from the signal text",
         tenant_id=tenant_id,
+        api_key=api_key,
     )
     return result.metrics

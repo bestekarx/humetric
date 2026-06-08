@@ -44,6 +44,9 @@ async def process_signal_task(db: AsyncSession, task) -> None:
     if not entity:
         raise ValueError(f"Entity not found: {entity_id}")
 
+    from .agents.base import get_tenant_llm_key
+    llm_key = await get_tenant_llm_key(task.tenant_id, db)
+
     ctx = entity.free_text or ""
     pack_extraction_prompt = (pack_def.get("prompts", {}) or {}).get("extraction")
     pack_metrics = pack_def.get("metrics", []) or []
@@ -52,9 +55,14 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         pack_prompt=pack_extraction_prompt,
         pack_metrics=pack_metrics,
         tenant_id=task.tenant_id,
+        api_key=llm_key,
     )
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
-    final_metrics = await curator.curate_metrics(extracted, existing_metrics, ctx, pack_def, tenant_id=task.tenant_id)
+    final_metrics = await curator.curate_metrics(
+        extracted, existing_metrics, ctx, pack_def,
+        tenant_id=task.tenant_id,
+        api_key=llm_key,
+    )
 
     skipped_sensitive: list[str] = []
 

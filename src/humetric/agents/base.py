@@ -18,7 +18,10 @@ T = TypeVar("T", bound=BaseModel)
 
 def _get_client(api_key: str | None = None) -> anthropic.Anthropic:
     global _client, _byo_client_cache
-    if api_key is not None:
+    # Treat an empty/whitespace key like None: fall through to the platform
+    # singleton, which raises a clear "missing key" error via require_keys()
+    # instead of constructing a client with an unusable empty credential.
+    if api_key and api_key.strip():
         if api_key not in _byo_client_cache:
             _byo_client_cache[api_key] = anthropic.Anthropic(
                 api_key=api_key,

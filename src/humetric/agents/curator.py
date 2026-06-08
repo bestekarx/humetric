@@ -19,6 +19,7 @@ async def curate_metrics(
     entity_context: str = "",
     pack_def: dict | None = None,
     tenant_id: int | None = None,
+    api_key: str | None = None,
 ) -> list[FinalMetric]:
     if not extracted:
         return []
@@ -56,6 +57,7 @@ Decide on each extracted metric."""
         tool_name="curate_metrics",
         tool_description="Validate the extracted metrics and determine final values",
         tenant_id=tenant_id,
+        api_key=api_key,
     )
 
     metric_type_map: dict[str, str] = {}

@@ -254,3 +254,22 @@ See docs/rename-plan.md for the full mapping.
 | `.env.example` | 1 env var |
 | `README.md` | 1 table row |
 | `pyproject.toml` | version `0.1.0` → `1.0.0` |
+
+
+  Planı yaparken kritik bir bug daha buldum — bunu da plana ekledim:
+
+  Migration 001+002, models.py ile büyük ölçüde uyumsuz. alembic upgrade head çalıştırıldığında 5 tablo eksik
+  oluşuyor (metering_record, consent, audit_log, metric_pack, task) ve Tenant tablosunda 15+ kolon yok. Bu yüzden
+  motor büyük olasılıkla şu an çalışmıyor — "sanki bir eksik var" dediğin şey muhtemelen buydu.
+
+  Plan'ın ana içeriği:
+
+  1. ⚠️  CRITICAL (önce bu): 001_initial_schema.py tamamen yeniden yaz — tüm 11 tabloyu, eksik kolonları ve
+  İngilizce isimleri ekle. 002_signal_table.py'ı sil (içeriği 001'e merge et).
+  2. Rename map — tam liste: kod→code, ad→name, durum→status, kota_sinyal_aylik→monthly_signal_quota,
+  embedding_metni→embedding_text, tarih→date, sinyal_sayisi→signal_count, llm_token_sayisi→llm_token_count,
+  embedding_sayisi→embedding_count, TenantStatus enum değerleri, UsageReportResponse.baslangic/bitis/toplam,
+  HUMETRIC_GUVEN_ESIGI→HUMETRIC_CONFIDENCE_THRESHOLD
+  3. Dokunulacak 14 dosya — her biri için exact satırlar ve ne değişeceği yazıyor
+  4. Verify adımları — py_compile + Türkçe grep + alembic smoke test
+  5. Version bump: 0.1.0 → 1.0.0 (BREAKING CHANGE)

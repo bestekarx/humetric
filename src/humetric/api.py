@@ -844,9 +844,15 @@ async def create_pack_wizard(
 ):
     _require_scope(request, "packs:admin")
     from .agents.wizard import generate_pack_yaml
+    from .agents.base import get_tenant_llm_key
 
     try:
-        result = await generate_pack_yaml(body.text, body.entity_type_hint, tenant_id=request.state.tenant_id)
+        llm_key = await get_tenant_llm_key(request.state.tenant_id, db)
+        result = await generate_pack_yaml(
+            body.text, body.entity_type_hint,
+            tenant_id=request.state.tenant_id,
+            api_key=llm_key,
+        )
         return result
     except Exception as exc:
         _log.exception("Wizard failed")
@@ -993,7 +999,8 @@ async def query_entities(
 
     query_embedding = None
     if body.free_text_query and body.free_text_query.strip():
-        provider = get_embedding_provider()
+        from .embeddings import get_tenant_embedding_provider
+        provider = await get_tenant_embedding_provider(tenant_id, db)
         query_embedding = (await provider.embed([body.free_text_query]))[0]
 
     candidates = await Store.hybrid_search_entities(
@@ -1006,6 +1013,8 @@ async def query_entities(
         top_k=max(top_k * 3, 20),
     )
 
+    from .agents.base import get_tenant_llm_key
+    llm_key = await get_tenant_llm_key(tenant_id, db)
     ranked = await ranker.rank_entities(
         candidates,
         query=body.free_text_query or body.rank_by or "",
@@ -1013,6 +1022,7 @@ async def query_entities(
         include_reasoning=body.include_reasoning,
         top_k=top_k,
         tenant_id=tenant_id,
+        api_key=llm_key,
     )
 
     results = []
