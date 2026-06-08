@@ -23,7 +23,7 @@ from ..schema import TierLimitExceededResponse
 _log = logging.getLogger(__name__)
 
 RESOURCE_LIMITS = {
-    "/v1/signals": ("sinyal_sayisi", FREE_TIER_SIGNAL_LIMIT),
+    "/v1/signals": ("signal_count", FREE_TIER_SIGNAL_LIMIT),
     "/v1/entities": ("entity_count", FREE_TIER_ENTITY_LIMIT),
     "/v1/packs": ("pack_count", FREE_TIER_PACK_LIMIT),
 }
@@ -73,7 +73,7 @@ class BillingGuardMiddleware(BaseHTTPMiddleware):
                 return JSONResponse(
                     status_code=402,
                     content=TierLimitExceededResponse(
-                        message=f"Free tier limiti asildi ({metric_key}: {current_value}/{limit}). Yükseltmek için /v1/billing/checkout adresini kullanin.",
+                        message=f"Free tier limit exceeded ({metric_key}: {current_value}/{limit}). Upgrade at /v1/billing/checkout.",
                         upgrade_url="/v1/billing/checkout?tier=pro",
                         current_usage={metric_key: current_value},
                     ).model_dump(),
@@ -92,11 +92,11 @@ class BillingGuardMiddleware(BaseHTTPMiddleware):
         today = date.today()
         start_of_month = date(today.year, today.month, 1)
 
-        if metric_key == "sinyal_sayisi":
+        if metric_key == "signal_count":
             result = await db.execute(
-                select(func.coalesce(func.sum(MeteringRecord.sinyal_sayisi), 0)).where(
+                select(func.coalesce(func.sum(MeteringRecord.signal_count), 0)).where(
                     MeteringRecord.tenant_id == tenant_id,
-                    MeteringRecord.tarih >= start_of_month,
+                    MeteringRecord.date >= start_of_month,
                 )
             )
             return result.scalar_one()

@@ -310,7 +310,7 @@ All settings via environment variables (see `.env.example`):
 | `DATABASE_URL` | — | PostgreSQL connection string |
 | `HUMETRIC_AUTH_SECRET` | — | Secret for auth tokens |
 | `HUMETRIC_EMBEDDING_PROVIDER` | `voyage` | `voyage`, `openai`, or `cohere` |
-| `HUMETRIC_GUVEN_ESIGI` | `0.55` | Minimum confidence threshold |
+| `HUMETRIC_CONFIDENCE_THRESHOLD` | `0.55` | Minimum confidence threshold |
 | `HUMETRIC_DECAY_LAMBDA` | `ln(2)/365` | Temporal decay rate |
 | `HUMETRIC_WORKER_POLL_INTERVAL_S` | `1` | Worker poll interval (seconds) |
 | `HUMETRIC_WORKER_BATCH_SIZE` | `5` | Tasks per worker batch |

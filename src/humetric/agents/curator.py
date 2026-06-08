@@ -84,14 +84,14 @@ Decide on each extracted metric."""
             is_new_metric = dec.metric_key not in existing_keys
             ext = extracted_map.get(dec.metric_key)
             first_obs_conf = ext.confidence if ext else 0.0
-            if not (is_new_metric and first_obs_conf >= config.GUVEN_ESIGI):
+            if not (is_new_metric and first_obs_conf >= config.CONFIDENCE_THRESHOLD):
                 continue
             # override: the curator may have left value/confidence empty (0);
             # fall back to the extraction values for the first observation.
             src_value = ext.value
             src_confidence = ext.confidence
 
-        if src_confidence < config.GUVEN_ESIGI:
+        if src_confidence < config.CONFIDENCE_THRESHOLD:
             continue
 
         # DB ck_entity_metric_value: value BETWEEN -1 AND 1. The LLM

@@ -1,4 +1,4 @@
-"""AI Pack Wizard — serbest metin sektor tanimindan Metric Pack YAML uretir (Spec 023).
+"""AI Pack Wizard — generates Metric Pack YAML from free-text domain description (Spec 023).
 
 Haiku model ile calisir; cikti PackDefinition schema'sina uygun olmali.
 """

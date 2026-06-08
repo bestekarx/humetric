@@ -1,7 +1,7 @@
-"""Pydantic v2 modelleri — API yanıt/istek semalari.
+"""Pydantic v2 models — API request/response schemas.
 
-populate_by_name=True + AliasChoices: Claude bazen Ingilizce alan adi donebilir,
-API yanitlari ise Ingilizce'dir.
+populate_by_name=True + AliasChoices: Claude may return English field names,
+API responses are in English.
 """
 
 from __future__ import annotations
@@ -15,9 +15,9 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 # ── Enums ─────────────────────────────────────────────────────
 
 class TenantStatus(str, Enum):
-    aktif = "aktif"
-    pasif = "pasif"
-    askida = "askida"
+    active = "active"
+    inactive = "inactive"
+    suspended = "suspended"
 
 
 class EntityStatus(str, Enum):
@@ -81,26 +81,26 @@ class ErrorCode(str, Enum):
 class TenantCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    kod: str = Field(..., max_length=64, description="Tenant short code")
-    ad: str = Field(..., max_length=255, description="Tenant display name")
-    durum: TenantStatus = TenantStatus.aktif
+    code: str = Field(..., max_length=64, description="Tenant short code")
+    name: str = Field(..., max_length=255, description="Tenant display name")
+    status: TenantStatus = TenantStatus.active
     embedding_provider: str = Field(default="voyage", max_length=64)
     llm_provider: str = Field(default="anthropic", max_length=64)
-    kota_sinyal_aylik: int | None = None
-    kota_entity: int | None = None
+    monthly_signal_quota: int | None = None
+    entity_quota: int | None = None
 
 
 class TenantRead(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: int
-    kod: str
-    ad: str
-    durum: str
+    code: str
+    name: str
+    status: str
     embedding_provider: str
     llm_provider: str
-    kota_sinyal_aylik: int | None = None
-    kota_entity: int | None = None
+    monthly_signal_quota: int | None = None
+    entity_quota: int | None = None
     created_at: datetime
 
 
@@ -564,20 +564,20 @@ class CheckoutResponse(BaseModel):
 class UsageRecordOut(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    tarih: str
-    sinyal_sayisi: int = 0
-    llm_token_sayisi: int = 0
-    embedding_sayisi: int = 0
+    date: str
+    signal_count: int = 0
+    llm_token_count: int = 0
+    embedding_count: int = 0
 
 
 class UsageReportResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     tenant_id: int
-    baslangic: str
-    bitis: str
+    start_date: str
+    end_date: str
     records: list[UsageRecordOut] = []
-    toplam: UsageRecordOut | None = None
+    total: UsageRecordOut | None = None
 
 
 class TierLimitExceededResponse(BaseModel):

@@ -31,8 +31,8 @@ class Store:
         return tenant
 
     @staticmethod
-    async def get_tenant_by_kod(db: AsyncSession, kod: str) -> Tenant | None:
-        result = await db.execute(select(Tenant).where(Tenant.kod == kod))
+    async def get_tenant_by_code(db: AsyncSession, code: str) -> Tenant | None:
+        result = await db.execute(select(Tenant).where(Tenant.code == code))
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -683,7 +683,7 @@ class Store:
             provider = await get_tenant_embedding_provider(tenant_id, db)
             vectors = await provider.embed([embed_text])
             entity.embedding = vectors[0]
-            entity.embedding_metni = embed_text
+            entity.embedding_text = embed_text
             entity.embedding_pending = False
             await db.commit()
 

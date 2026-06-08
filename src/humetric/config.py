@@ -46,7 +46,7 @@ RETRIEVE_K = int(os.environ.get("HUMETRIC_RETRIEVE_K", "50"))
 LLM_K = int(os.environ.get("HUMETRIC_LLM_K", "20"))
 HYBRID_VECTOR_WEIGHT = float(os.environ.get("HUMETRIC_HYBRID_VECTOR_WEIGHT", "0.7"))
 HYBRID_TEXT_WEIGHT = float(os.environ.get("HUMETRIC_HYBRID_TEXT_WEIGHT", "0.3"))
-GUVEN_ESIGI = float(os.environ.get("HUMETRIC_GUVEN_ESIGI", "0.55"))
+CONFIDENCE_THRESHOLD = float(os.environ.get("HUMETRIC_CONFIDENCE_THRESHOLD", "0.55"))
 MAX_TOKENS = int(os.environ.get("HUMETRIC_MAX_TOKENS", "2048"))
 DECAY_LAMBDA = float(os.environ.get("HUMETRIC_DECAY_LAMBDA", str(math.log(2) / 365)))
 PROMPT_CACHE_ENABLED = os.environ.get("HUMETRIC_PROMPT_CACHE_ENABLED", "true").lower() != "false"

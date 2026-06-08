@@ -64,7 +64,7 @@ async def verify_webhook_signature(payload: bytes, sig_header: str) -> stripe.Ev
 
 
 async def handle_webhook(event: stripe.Event, db_session) -> dict[str, Any]:
-    """Webhook event isleme — tenant durumunu gunceller."""
+    """Process webhook event — update tenant status."""
     from ..db.models import Tenant
     from sqlalchemy import update
 

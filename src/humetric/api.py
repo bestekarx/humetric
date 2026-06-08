@@ -1,6 +1,6 @@
 """HuMetric REST API Core — Spec 022 endpoints + Spec 021 foundation + Spec 026 registration/billing/metrics.
 
-Calistirma: uvicorn humetric.api:app --reload --port 8002
+Run: uvicorn humetric.api:app --reload --port 8002
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ from .store import Store, _metric_row_to_read
 
 _log = logging.getLogger(__name__)
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 app = FastAPI(
     title="Humetric Platform API",
@@ -1127,17 +1127,17 @@ _serializer = URLSafeTimedSerializer(AUTH_SECRET)
 async def register(body: RegisterRequest, request: Request):
     captcha_ok = await verify_captcha(body.captcha_token)
     if not captcha_ok:
-        return JSONResponse(status_code=400, content=error_envelope("captcha_failed", "Captcha dogrulamasi basarisiz").model_dump())
+        return JSONResponse(status_code=400, content=error_envelope("captcha_failed", "Captcha verification failed").model_dump())
 
     factory = get_async_session_factory()
     async with factory() as db:
         existing = await db.execute(select(Tenant).where(Tenant.email == body.email))
         if existing.scalar_one_or_none():
-            return JSONResponse(status_code=409, content=error_envelope("email_already_registered", "Bu email zaten kayitli").model_dump())
+            return JSONResponse(status_code=409, content=error_envelope("email_already_registered", "This email is already registered").model_dump())
 
         tenant = Tenant(
-            kod=f"t_{secrets.token_hex(6)}",
-            ad=body.email.split("@")[0],
+            code=f"t_{secrets.token_hex(6)}",
+            name=body.email.split("@")[0],
             email=body.email,
             password_hash=_bcrypt.hashpw(body.password.encode()[:72], _bcrypt.gensalt()).decode(),
             email_verified=False,
@@ -1201,7 +1201,7 @@ async def verify_email(token: str):
             await send_welcome_email(tenant.email, api_key_prefix)
 
         await db.commit()
-        return VerifyEmailResponse(verified=True, api_key=api_key, message="Email dogrulandi." if not show_api_key else "Email dogrulandi. API key'iniz sadece bir kez gosterilir.").model_dump()
+        return VerifyEmailResponse(verified=True, api_key=api_key, message="Email verified." if not show_api_key else "Email verified. Your API key is shown only once.").model_dump()
 
 
 # ── Tenant self-service endpoints (Spec 026) ────────────────────
@@ -1221,14 +1221,14 @@ async def tenant_dashboard(
     result = await db.execute(
         select(MeteringRecord).where(
             MeteringRecord.tenant_id == tenant_id,
-            MeteringRecord.tarih >= first_of_month,
+            MeteringRecord.date >= first_of_month,
         )
     )
     records = result.scalars().all()
 
-    usage = {"sinyal_sayisi": sum(r.sinyal_sayisi for r in records),
-             "llm_token_sayisi": sum(r.llm_token_sayisi for r in records),
-             "embedding_sayisi": sum(r.embedding_sayisi for r in records)}
+    usage = {"signal_count": sum(r.signal_count for r in records),
+             "llm_token_count": sum(r.llm_token_count for r in records),
+             "embedding_count": sum(r.embedding_count for r in records)}
 
     from .services.usage_service import TIER_LIMITS
     limits = TIER_LIMITS.get(tenant.tier, {})
@@ -1293,7 +1293,7 @@ async def billing_checkout(
         raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
 
     if tenant.tier == tier:
-        raise HTTPException(status_code=400, detail=error_envelope("validation_error", f"Zaten {tier} tier'dasiniz").model_dump())
+        raise HTTPException(status_code=400, detail=error_envelope("validation_error", f"Already on {tier} tier").model_dump())
 
     if not tenant.stripe_customer_id and tenant.email:
         customer = await create_customer(tenant.email, tenant_id)
@@ -1322,53 +1322,53 @@ async def billing_webhook(request: Request):
 
 @app.get(f"{V1_PREFIX}/usage", tags=["Usage"])
 async def tenant_usage(
-    baslangic: str,
-    bitis: str,
+    start_date: str,
+    end_date: str,
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
     tenant_id = request.state.tenant_id
-    return await _build_usage_report(db, tenant_id, baslangic, bitis)
+    return await _build_usage_report(db, tenant_id, start_date, end_date)
 
 
 @app.get(f"{V1_PREFIX}/admin/usage", tags=["Usage"])
 async def admin_usage(
     tenant: str,
-    baslangic: str,
-    bitis: str,
+    start_date: str,
+    end_date: str,
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
     _require_scope(request, "packs:admin")
-    return await _build_usage_report(db, int(tenant), baslangic, bitis)
+    return await _build_usage_report(db, int(tenant), start_date, end_date)
 
 
-async def _build_usage_report(db: AsyncSession, tenant_id: int, baslangic: str, bitis: str) -> dict:
-    start_date = date.fromisoformat(baslangic)
-    end_date = date.fromisoformat(bitis)
+async def _build_usage_report(db: AsyncSession, tenant_id: int, start_date_str: str, end_date_str: str) -> dict:
+    start_date = date.fromisoformat(start_date_str)
+    end_date = date.fromisoformat(end_date_str)
     result = await db.execute(
         select(MeteringRecord).where(
             MeteringRecord.tenant_id == tenant_id,
-            MeteringRecord.tarih >= start_date,
-            MeteringRecord.tarih <= end_date,
-        ).order_by(MeteringRecord.tarih)
+            MeteringRecord.date >= start_date,
+            MeteringRecord.date <= end_date,
+        ).order_by(MeteringRecord.date)
     )
     records = result.scalars().all()
 
     record_list = [
-        UsageRecordOut(tarih=str(r.tarih), sinyal_sayisi=r.sinyal_sayisi, llm_token_sayisi=r.llm_token_sayisi, embedding_sayisi=r.embedding_sayisi)
+        UsageRecordOut(date=str(r.date), signal_count=r.signal_count, llm_token_count=r.llm_token_count, embedding_count=r.embedding_count)
         for r in records
     ]
-    toplam = UsageRecordOut(
-        tarih=f"{baslangic}..{bitis}",
-        sinyal_sayisi=sum(r.sinyal_sayisi for r in records),
-        llm_token_sayisi=sum(r.llm_token_sayisi for r in records),
-        embedding_sayisi=sum(r.embedding_sayisi for r in records),
+    total = UsageRecordOut(
+        date=f"{start_date_str}..{end_date_str}",
+        signal_count=sum(r.signal_count for r in records),
+        llm_token_count=sum(r.llm_token_count for r in records),
+        embedding_count=sum(r.embedding_count for r in records),
     )
 
     return UsageReportResponse(
-        tenant_id=tenant_id, baslangic=baslangic, bitis=bitis,
-        records=record_list, toplam=toplam,
+        tenant_id=tenant_id, start_date=start_date_str, end_date=end_date_str,
+        records=record_list, total=total,
     ).model_dump()
 
 

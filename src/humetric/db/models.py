@@ -47,10 +47,10 @@ class Tenant(Base):
     __tablename__ = "tenant"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    kod: Mapped[str] = mapped_column(String(64), nullable=False)
-    ad: Mapped[str] = mapped_column(String(255), nullable=False)
-    durum: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="aktif"
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="active"
     )
     embedding_provider: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="voyage"
@@ -58,8 +58,8 @@ class Tenant(Base):
     llm_provider: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="anthropic"
     )
-    kota_sinyal_aylik: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    kota_entity: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    monthly_signal_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    entity_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
     anthropic_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     voyage_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, unique=True)
@@ -81,7 +81,7 @@ class Tenant(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("kod", name="uq_tenant_kod"),
+        UniqueConstraint("code", name="uq_tenant_code"),
     )
 
 
@@ -99,7 +99,7 @@ class Entity(Base):
     fields: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     free_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding: Mapped[list | None] = mapped_column(Vector(EMBED_DIM), nullable=True)
-    embedding_metni: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="active"
     )
@@ -234,16 +234,16 @@ class MeteringRecord(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     tenant_id: Mapped[int] = _tenant_fk()
-    tarih: Mapped[date] = mapped_column(nullable=False)
-    sinyal_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    llm_token_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    embedding_sayisi: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    date: Mapped[date] = mapped_column(nullable=False)
+    signal_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    llm_token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    embedding_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
 
     __table_args__ = (
-        UniqueConstraint("tenant_id", "tarih", name="uq_metering_tenant_tarih"),
+        UniqueConstraint("tenant_id", "date", name="uq_metering_tenant_date"),
         Index("ix_metering_tenant", "tenant_id"),
     )
 
@@ -330,7 +330,7 @@ class AuditLog(Base):
 
 
 class MetricPack(Base):
-    """Metric Pack tanimi (Spec 023)."""
+    """Metric Pack definition (Spec 023)."""
     __tablename__ = "metric_pack"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
