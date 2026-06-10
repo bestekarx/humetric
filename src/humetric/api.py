@@ -67,6 +67,8 @@ from .schema import (
     RankedResult,
     RegisterRequest,
     RegisterResponse,
+    ReviewerOverrideRequest,
+    ReviewerOverrideResponse,
     RotateApiKeyResponse,
     SignalCreate,
     SignalStatus,
@@ -1409,6 +1411,82 @@ async def _build_usage_report(db: AsyncSession, tenant_id: int, start_date_str: 
         tenant_id=tenant_id, start_date=start_date_str, end_date=end_date_str,
         records=record_list, total=total,
     ).model_dump()
+
+
+# ── Reviewer Override (eval/replay harness) ─────────────────────
+
+
+@app.put(
+    f"{V1_PREFIX}/metrics/{{entity_id}}/{{metric_key}}/review",
+    tags=["Metrics"],
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+    },
+)
+async def reviewer_override_metric(
+    entity_id: str,
+    metric_key: str,
+    body: ReviewerOverrideRequest,
+    request: Request,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    _require_scope(request, "packs:admin")
+    tenant_id = request.state.tenant_id
+
+    previous = await Store.get_entity_metrics(db, entity_id, tenant_id)
+    prev_metric = next((m for m in previous if m.metric_key == metric_key), None)
+
+    updated = await Store.set_reviewer_override(
+        db, entity_id, tenant_id, metric_key,
+        value=body.value,
+        confidence=body.confidence,
+        comment=body.comment,
+    )
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail=error_envelope("signal_not_found", f"Metric not found: {entity_id}/{metric_key}").model_dump(),
+        )
+
+    return ReviewerOverrideResponse(
+        entity_id=entity_id,
+        metric_key=metric_key,
+        previous_value=prev_metric.value if prev_metric else None,
+        previous_confidence=prev_metric.confidence if prev_metric else None,
+        new_value=body.value,
+        new_confidence=body.confidence,
+        comment=body.comment,
+        overridden_at=datetime.now(timezone.utc),
+    )
+
+
+@app.get(
+    f"{V1_PREFIX}/metrics/pending-review",
+    tags=["Metrics"],
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+    },
+)
+async def list_pending_reviews(
+    request: Request,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    _require_scope(request, "packs:admin")
+    tenant_id = request.state.tenant_id
+
+    pending = await Store.list_pending_reviews(db, tenant_id)
+    return [
+        {
+            "entity_id": m.entity_id,
+            "metric_key": m.metric_key,
+            "value": m.value,
+            "confidence": m.confidence,
+            "review_status": m.review_status,
+            "signal_id": m.signal_id,
+            "last_updated": m.last_updated.isoformat() if m.last_updated else None,
+        }
+        for m in pending
+    ]
 
 
 # ── Middleware chain ───────────────────────────────────────────

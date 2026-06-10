@@ -314,6 +314,7 @@ class PackMetricDef(BaseModel):
     sensitive: bool = False
     visible_to: list[str] = Field(default_factory=list)
     requires_consent_scope: str | None = None
+    allow_unknown: bool = False
 
 
 class PackKVKK(BaseModel):
@@ -442,6 +443,8 @@ class ExtractedMetric(BaseModel):
     value: float
     confidence: float
     reasoning: str = ""
+    needs_review: bool = False
+    source_span: str | None = None
 
 
 class ExtractionResult(BaseModel):
@@ -474,6 +477,7 @@ class FinalMetric(BaseModel):
     confidence: float
     reasoning: str = ""
     source_signal_id: str | None = None
+    needs_review: bool = False
 
 
 class RankedResultLLM(BaseModel):
@@ -591,3 +595,24 @@ class TierLimitExceededResponse(BaseModel):
     message: str
     upgrade_url: str
     current_usage: dict = {}
+
+
+class ReviewerOverrideRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    value: float = Field(ge=-1.0, le=1.0)
+    confidence: float = Field(ge=0.0, le=1.0)
+    comment: str = ""
+
+
+class ReviewerOverrideResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    entity_id: str
+    metric_key: str
+    previous_value: float | None = None
+    previous_confidence: float | None = None
+    new_value: float
+    new_confidence: float
+    comment: str = ""
+    overridden_at: datetime | None = None

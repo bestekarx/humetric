@@ -8,6 +8,7 @@ Exponential backoff retry, graceful shutdown (SIGTERM/SIGINT).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import signal
 from datetime import datetime, timezone
@@ -45,23 +46,37 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         raise ValueError(f"Entity not found: {entity_id}")
 
     from .agents.base import get_tenant_llm_key
+    from .agents.versioning import hash_text
+
     llm_key = await get_tenant_llm_key(task.tenant_id, db)
+
+    signal_text = text or json.dumps(payload.get("structured", {}), sort_keys=True, ensure_ascii=False)
+    input_hash = hash_text(signal_text)
+    signal = await Store.get_signal(db, task.signal_id, task.tenant_id)
+    if signal:
+        signal.input_hash = input_hash
+        db.add(signal)
+        await db.commit()
 
     ctx = entity.free_text or ""
     pack_extraction_prompt = (pack_def.get("prompts", {}) or {}).get("extraction")
     pack_metrics = pack_def.get("metrics", []) or []
+    extract_meta: dict = {}
     extracted = await extractor.extract_metrics(
         text, ctx,
         pack_prompt=pack_extraction_prompt,
         pack_metrics=pack_metrics,
         tenant_id=task.tenant_id,
         api_key=llm_key,
+        call_meta=extract_meta,
     )
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
+    curator_meta: dict = {}
     final_metrics = await curator.curate_metrics(
         extracted, existing_metrics, ctx, pack_def,
         tenant_id=task.tenant_id,
         api_key=llm_key,
+        call_meta=curator_meta,
     )
 
     skipped_sensitive: list[str] = []
@@ -78,10 +93,18 @@ async def process_signal_task(db: AsyncSession, task) -> None:
                     skipped_sensitive.append(fm.metric_key)
                     continue
 
+        extracted_entries = [
+            e.model_dump() for e in extracted if e.metric_key == fm.metric_key
+        ]
         trace = {
-            "extracted": [
-                e.model_dump() for e in extracted if e.metric_key == fm.metric_key
-            ]
+            "extracted": extracted_entries,
+            "extract_prompt_hash": extract_meta.get("prompt_hash"),
+            "extract_schema_hash": extract_meta.get("schema_hash"),
+            "extract_model": extract_meta.get("model"),
+            "curator_prompt_hash": curator_meta.get("prompt_hash"),
+            "curator_schema_hash": curator_meta.get("schema_hash"),
+            "curator_model": curator_meta.get("model"),
+            "needs_review": fm.needs_review,
         }
         await Store.upsert_metric(db, {
             "tenant_id": task.tenant_id,
@@ -92,6 +115,12 @@ async def process_signal_task(db: AsyncSession, task) -> None:
             "source_count": 1,
             "signal_id": task.signal_id,
             "trace_data": trace,
+            "input_hash": input_hash,
+            "prompt_hash": extract_meta.get("prompt_hash"),
+            "schema_hash": extract_meta.get("schema_hash"),
+            "model": extract_meta.get("model"),
+            "extraction_raw": {"extracted": extracted_entries},
+            "review_status": "pending_review" if fm.needs_review else None,
         })
 
     embed_text = _build_embed_text_safe(entity, existing_metrics, pack_def)
@@ -109,6 +138,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
             "confidence": fm.confidence,
             "source_count": 1,
             "source_signal_id": task.signal_id,
+            "needs_review": fm.needs_review,
         }
         for fm in final_metrics
     ]

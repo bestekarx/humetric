@@ -757,6 +757,57 @@ class Store:
             return None
         return decrypt_key(encrypted)
 
+    # --- Reviewer Override (eval/replay harness) ---
+
+    @staticmethod
+    async def set_reviewer_override(
+        db: AsyncSession,
+        entity_id: str,
+        tenant_id: int,
+        metric_key: str,
+        value: float,
+        confidence: float,
+        comment: str = "",
+    ) -> EntityMetric | None:
+        result = await db.execute(
+            select(EntityMetric).where(
+                EntityMetric.entity_id == entity_id,
+                EntityMetric.tenant_id == tenant_id,
+                EntityMetric.metric_key == metric_key,
+            )
+        )
+        metric = result.scalar_one_or_none()
+        if not metric:
+            return None
+
+        metric.reviewer_override = {
+            "value": value,
+            "confidence": confidence,
+            "comment": comment,
+            "reviewer": "human",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        metric.review_status = "reviewed"
+        metric.value = value
+        metric.confidence = confidence
+        metric.last_updated = datetime.now(timezone.utc)
+        db.add(metric)
+        await db.commit()
+        await db.refresh(metric)
+        return metric
+
+    @staticmethod
+    async def list_pending_reviews(
+        db: AsyncSession, tenant_id: int, limit: int = 50,
+    ) -> list[EntityMetric]:
+        result = await db.execute(
+            select(EntityMetric).where(
+                EntityMetric.tenant_id == tenant_id,
+                EntityMetric.review_status == "pending_review",
+            ).limit(limit)
+        )
+        return list(result.scalars().all())
+
 
 # ── helpers ────────────────────────────────────────────────────
 

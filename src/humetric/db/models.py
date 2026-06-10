@@ -144,6 +144,13 @@ class EntityMetric(Base):
     )
     signal_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     trace_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prompt_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    schema_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reviewer_override: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    extraction_raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    review_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     entity: Mapped["Entity"] = relationship("Entity", back_populates="metrics")
 
@@ -181,6 +188,7 @@ class Signal(Base):
     max_retries: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     pack_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     pack_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )

@@ -20,6 +20,7 @@ async def curate_metrics(
     pack_def: dict | None = None,
     tenant_id: int | None = None,
     api_key: str | None = None,
+    call_meta: dict | None = None,
 ) -> list[FinalMetric]:
     if not extracted:
         return []
@@ -58,6 +59,7 @@ Decide on each extracted metric."""
         tool_description="Validate the extracted metrics and determine final values",
         tenant_id=tenant_id,
         api_key=api_key,
+        call_meta=call_meta,
     )
 
     metric_type_map: dict[str, str] = {}
@@ -75,30 +77,24 @@ Decide on each extracted metric."""
     for dec in result.decisions:
         src_value = dec.value
         src_confidence = dec.confidence
+        needs_review = False
+
+        ext = extracted_map.get(dec.metric_key)
+        if ext and ext.needs_review:
+            needs_review = True
 
         if dec.action.strip().lower() in DROP_ACTIONS:
-            # The LLM can nondeterministically drop (skip/reject) a metric
-            # that's being observed for the first time with high confidence.
-            # Deterministically add metrics that aren't in the existing
-            # profile and were extracted above the threshold as a first
-            # observation — curator judgment is preserved for updates to
-            # existing metrics.
             is_new_metric = dec.metric_key not in existing_keys
             ext = extracted_map.get(dec.metric_key)
             first_obs_conf = ext.confidence if ext else 0.0
             if not (is_new_metric and first_obs_conf >= config.CONFIDENCE_THRESHOLD):
                 continue
-            # override: the curator may have left value/confidence empty (0);
-            # fall back to the extraction values for the first observation.
             src_value = ext.value
             src_confidence = ext.confidence
 
-        if src_confidence < config.CONFIDENCE_THRESHOLD:
+        if not needs_review and src_confidence < config.CONFIDENCE_THRESHOLD:
             continue
 
-        # DB ck_entity_metric_value: value BETWEEN -1 AND 1. The LLM
-        # sometimes returns out-of-range values; clamp so the insert
-        # (and the whole task transaction) doesn't blow up.
         final_value = max(-1.0, min(1.0, src_value))
         final_confidence = max(0.0, min(1.0, src_confidence))
 
@@ -111,6 +107,7 @@ Decide on each extracted metric."""
             value=final_value,
             confidence=final_confidence,
             reasoning=dec.reasoning,
+            needs_review=needs_review,
         ))
 
     return final_metrics

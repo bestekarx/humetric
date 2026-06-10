@@ -1,0 +1,270 @@
+pack_key: saha-hizmet-isci
+entity_type: isci
+version: 1
+description: >
+  Saha hizmet iscisi icin 15 sinyalli canary test seti.
+  Farkli senaryolar: olumlu, olumsuz, celiskili, eksik veri, gurultulu.
+  Beklenen cikarimlar ve "bilinmiyor" durumlari tanimlidir.
+created_at: "2026-06-09"
+
+signals:
+  - id: canary-001-clear-positive
+    signal_text: >
+      Ahmet bu ay tum randevularina zamaninda geldi, musteri
+      memnuniyet anketinde 10 uzerinden 9 aldi. Is bitirme
+      raporlarinda kalite puanlamasi cok yuksek.
+    entity_context: "Ahmet, 5 yillik saha teknisyeni, Istanbul"
+    expected_extraction:
+      - metric_key: dakiklik
+        value_range: [0.5, 1.0]
+        confidence_min: 0.6
+      - metric_key: iletisim
+        value_range: [0.5, 1.0]
+        confidence_min: 0.5
+      - metric_key: titizlik
+        value_range: [0.3, 1.0]
+        confidence_min: 0.4
+    expected_curation:
+      actions:
+        dakiklik: [accept, merge]
+        iletisim: [accept, merge]
+        titizlik: [accept, merge]
+    allowed_unknown: []
+
+  - id: canary-002-clear-negative
+    signal_text: >
+      Mehmet son 3 ise ortalama 45 dakika gec kaldi.
+      Musteriler surekli sikayetci. Is sonrasi kontrol
+      raporunda 5 eksik/hatali islem tespit edildi.
+    entity_context: "Mehmet, 2 yillik saha teknisyeni, Ankara"
+    expected_extraction:
+      - metric_key: dakiklik
+        value_range: [-1.0, -0.5]
+        confidence_min: 0.7
+      - metric_key: titizlik
+        value_range: [-1.0, -0.3]
+        confidence_min: 0.5
+    expected_curation:
+      actions:
+        dakiklik: [accept, merge]
+        titizlik: [accept, merge]
+    allowed_unknown: [iletisim]
+
+  - id: canary-003-mixed-positive-negative
+    signal_text: >
+      Selin ise tam zamaninda geldi fakat musterinin
+      talebini yanlis anlamis, yanlis parcayi degistirmis.
+      Sonradan durumu fark edip duzeltmis ve musteriye
+      ozur dilemis. Musteri yine de memnun kalmamis.
+    entity_context: "Selin, 3 yillik saha teknisyeni, Izmir"
+    expected_extraction:
+      - metric_key: dakiklik
+        value_range: [0.3, 1.0]
+        confidence_min: 0.6
+      - metric_key: teknik_beceri
+        value_range: [-0.8, 0.5]
+        confidence_min: 0.5
+      - metric_key: iletisim
+        value_range: [-0.5, 0.5]
+        confidence_min: 0.4
+    expected_curation:
+      actions:
+        dakiklik: [accept, merge]
+        teknik_beceri: [accept, merge]
+        iletisim: [accept, merge]
+    allowed_unknown: [titizlik, teknik_beceri]
+
+  - id: canary-004-ambiguous
+    signal_text: >
+      Ali bugun normalden farkli bir sey yapmadi.
+    entity_context: "Ali, 7 yillik kdemli teknisyen, Bursa"
+    expected_extraction: []
+    expected_curation:
+      actions: {}
+    allowed_unknown: [dakiklik, titizlik, teknik_beceri, iletisim, mali_durum]
+
+  - id: canary-005-noisy
+    signal_text: >
+      Arac arizasi bildirimi: 34 ABC 123 plakali servis araci
+      periyodik bakima girdi, yag degisimi ve fren balatasi
+      degisimi yapildi. Toplam maliyet 4.500 TL.
+    entity_context: "Burak, 4 yillik saha teknisyeni, servis araci kullanicisi"
+    expected_extraction: []
+    expected_curation:
+      actions: {}
+    allowed_unknown: [dakiklik, titizlik, teknik_beceri, iletisim, mali_durum]
+
+  - id: canary-006-extreme-positive
+    signal_text: >
+      Zeynep bu yil sirket capinda "Yilin Teknisyeni" odulunu
+      kazandi. Tum musterilerinden tam puan aldi. Tum isleri
+      zamaninda ve hatasiz tamamladi. Ekip arkadaslarina
+      mentorluk yapiyor, teknik egitimler veriyor.
+    entity_context: "Zeynep, 8 yillik bas teknisyen, Istanbul"
+    expected_extraction:
+      - metric_key: teknik_beceri
+        value_range: [0.8, 1.0]
+        confidence_min: 0.7
+      - metric_key: iletisim
+        value_range: [0.7, 1.0]
+        confidence_min: 0.6
+      - metric_key: titizlik
+        value_range: [0.7, 1.0]
+        confidence_min: 0.6
+      - metric_key: dakiklik
+        value_range: [0.7, 1.0]
+        confidence_min: 0.6
+    expected_curation:
+      actions:
+        teknik_beceri: [accept, merge]
+        iletisim: [accept, merge]
+        titizlik: [accept, merge]
+        dakiklik: [accept, merge]
+    allowed_unknown: []
+
+  - id: canary-007-contradictory
+    signal_text: >
+      Mustafa gecen hafta cok iyi bir is cikardi, musteri cok
+      memnun kaldi. Ancak bu hafta ayni musterinin ikinci
+      cagrisinda cok kotu bir performans gosterdi, sikayet
+      aldi.
+    entity_context: "Mustafa, 1 yillik yeni teknisyen, Adana"
+    expected_extraction:
+      - metric_key: titizlik
+        value_range: [-0.5, 0.5]
+        confidence_min: 0.3
+    expected_curation:
+      actions:
+        titizlik: [accept, merge, skip]
+    allowed_unknown: [dakiklik, teknik_beceri, iletisim, mali_durum]
+
+  - id: canary-008-no-metrics
+    signal_text: >
+      Hava bugun cok guzel.
+    entity_context: "Can, saha teknisyeni, Antalya"
+    expected_extraction: []
+    expected_curation:
+      actions: {}
+    allowed_unknown: [dakiklik, titizlik, teknik_beceri, iletisim, mali_durum]
+
+  - id: canary-009-single-metric
+    signal_text: >
+      Bugun ise 2 saat gec kaldi.
+    entity_context: "Deniz, saha teknisyeni"
+    expected_extraction:
+      - metric_key: dakiklik
+        value_range: [-1.0, -0.6]
+        confidence_min: 0.8
+    expected_curation:
+      actions:
+        dakiklik: [accept, merge]
+    allowed_unknown: [titizlik, teknik_beceri, iletisim, mali_durum]
+
+  - id: canary-010-technical-problem-solving
+    signal_text: >
+      Musterinin klimasi beklenmedik bir ariza vermis,
+      normalde degismesi gereken parca stokta yoktu.
+      Emre alternatif bir cozum bulup gecici olarak
+      calisir hale getirdi, ertesi gun parcayi temin
+      edip kalici cozumu uyguladi. Musteri cozum
+      odakli yaklasimdan cok memnun.
+    entity_context: "Emre, 6 yillik kdemli teknisyen, Izmir"
+    expected_extraction:
+      - metric_key: teknik_beceri
+        value_range: [0.6, 1.0]
+        confidence_min: 0.6
+      - metric_key: iletisim
+        value_range: [0.3, 1.0]
+        confidence_min: 0.4
+    expected_curation:
+      actions:
+        teknik_beceri: [accept, merge]
+        iletisim: [accept, merge]
+    allowed_unknown: []
+
+  - id: canary-011-only-communication
+    signal_text: >
+      Musteriye yapilacak islemi detaylica anlatti, tum
+      sorularini sabirla cevapladi, is bitiminde bakim
+      onerilerini yazili olarak birakti. Cok profesyoneldi.
+    entity_context: "Fatma, 3 yillik teknisyen, Eskisehir"
+    expected_extraction:
+      - metric_key: iletisim
+        value_range: [0.7, 1.0]
+        confidence_min: 0.7
+    expected_curation:
+      actions:
+        iletisim: [accept, merge]
+    allowed_unknown: [dakiklik, titizlik, teknik_beceri, mali_durum]
+
+  - id: canary-012-sentiment-only
+    signal_text: >
+      Berbat bir deneyimdi. Bir daha bu teknisyeni
+      istemiyorum.
+    entity_context: "Gokhan, 1 yillik teknisyen, Konya"
+    expected_extraction:
+      - metric_key: iletisim
+        value_range: [-1.0, -0.3]
+        confidence_min: 0.4
+    expected_curation:
+      actions:
+        iletisim: [accept, merge, skip]
+    allowed_unknown: [dakiklik, titizlik, teknik_beceri, mali_durum]
+
+  - id: canary-013-structured-data
+    signal_text: ""
+    structured:
+      olay: "is_tamamlama"
+      dakiklik_puani: 9
+      kalite_puani: 8
+      iletisim_puani: 7
+      musteri_memnuniyeti: 8
+    entity_context: "Hakan, teknisyen, Istanbul"
+    expected_extraction:
+      - metric_key: dakiklik
+        value_range: [0.4, 1.0]
+        confidence_min: 0.5
+      - metric_key: titizlik
+        value_range: [0.3, 1.0]
+        confidence_min: 0.4
+      - metric_key: iletisim
+        value_range: [0.2, 1.0]
+        confidence_min: 0.4
+    expected_curation:
+      actions:
+        dakiklik: [accept, merge]
+        titizlik: [accept, merge]
+        iletisim: [accept, merge]
+    allowed_unknown: []
+
+  - id: canary-014-financial-hint
+    signal_text: >
+      Isci maas avansi istedi, maddi sikintida oldugunu soyledi.
+      Bu ay 3. kez avans talebi oldu.
+    entity_context: "Ibrahim, 2 yillik teknisyen, Gaziantep"
+    expected_extraction:
+      - metric_key: mali_durum
+        value_range: [-1.0, -0.3]
+        confidence_min: 0.4
+    expected_curation:
+      actions:
+        mali_durum: [accept, merge]
+    allowed_unknown: [dakiklik, titizlik, teknik_beceri, iletisim]
+
+  - id: canary-015-turkish-idioms
+    signal_text: >
+      Isini dort dortluk yapmis, tikir tikir calisiyor.
+      Eline saglik, cok duzgun calismis.
+    entity_context: "Jale, 5 yillik teknisyen, Denizli"
+    expected_extraction:
+      - metric_key: titizlik
+        value_range: [0.5, 1.0]
+        confidence_min: 0.5
+      - metric_key: teknik_beceri
+        value_range: [0.3, 1.0]
+        confidence_min: 0.4
+    expected_curation:
+      actions:
+        titizlik: [accept, merge]
+        teknik_beceri: [accept, merge]
+    allowed_unknown: [iletisim]

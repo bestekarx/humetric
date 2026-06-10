@@ -19,6 +19,7 @@ async def extract_metrics(
     pack_metrics: list[dict] | None = None,
     tenant_id: int | None = None,
     api_key: str | None = None,
+    call_meta: dict | None = None,
 ) -> list[ExtractedMetric]:
     system = pack_prompt or _DEFAULT_SYSTEM
 
@@ -47,6 +48,12 @@ async def extract_metrics(
 {allowed_block}
 Signal text: {signal_text}
 
+Important rules:
+- Every value MUST be between -1.0 and 1.0 inclusive (normalized scale).
+- Set confidence to 0.0 and needs_review to true if the signal is ambiguous
+  or contains no clear evidence about the metric — do not guess.
+- Include source_span: the exact phrase from the signal that supports the value.
+
 Extract metrics from the signal above."""
     result = await structured_call(
         model=config.AGENT_MODEL,
@@ -57,5 +64,6 @@ Extract metrics from the signal above."""
         tool_description="Extract metrics from the signal text",
         tenant_id=tenant_id,
         api_key=api_key,
+        call_meta=call_meta,
     )
     return result.metrics

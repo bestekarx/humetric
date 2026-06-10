@@ -57,6 +57,7 @@ async def structured_call(
     tool_description: str,
     api_key: str | None = None,
     tenant_id: int | None = None,
+    call_meta: dict | None = None,
 ) -> T:
     import asyncio
     import logging
@@ -112,5 +113,11 @@ async def structured_call(
 
     for blok in resp.content:
         if blok.type == "tool_use" and blok.name == tool_name:
+            if call_meta is not None:
+                from .versioning import hash_prompt, hash_schema
+                system_text = system if isinstance(system, str) else str(system)
+                call_meta["prompt_hash"] = hash_prompt(system_text)
+                call_meta["schema_hash"] = hash_schema(schema)
+                call_meta["model"] = model
             return schema.model_validate(blok.input)
     raise RuntimeError(f"Model '{tool_name}' aracini cagirmadi. Yanit: {resp.content!r}")

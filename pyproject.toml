@@ -39,6 +39,7 @@ dev = [
 [project.scripts]
 humetric-api = "humetric.api:main"
 humetric-seed = "humetric.seed:main"
+humetric-replay = "humetric.replay:main"
 
 [build-system]
 requires = ["hatchling"]
