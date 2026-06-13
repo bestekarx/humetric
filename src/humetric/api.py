@@ -27,7 +27,6 @@ from .agents import ranker
 from .config import AUTH_SECRET
 from .db.database import get_async_session_factory, get_db, get_tenant_db
 from .db.models import MeteringRecord, Task, Tenant
-from .embeddings import get_embedding_provider
 from .middleware.auth import AuthMiddleware
 from .middleware.billing_guard import BillingGuardMiddleware
 from .middleware.metrics import PrometheusMiddleware

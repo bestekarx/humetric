@@ -12,7 +12,7 @@ import yaml
 from . import config
 from .agents import curator, extractor
 from .agents.versioning import hash_prompt, hash_schema, hash_text
-from .schema import CurationResult, ExtractedMetric, ExtractionResult, FinalMetric
+from .schema import ExtractedMetric, ExtractionResult, FinalMetric
 
 _log = logging.getLogger(__name__)
 
