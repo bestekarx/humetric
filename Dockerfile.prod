@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
@@ -7,7 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --target=/app/deps -e .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --target=/app/deps -e .
 
 FROM python:3.11-slim
 
@@ -25,7 +27,8 @@ COPY src/ src/
 COPY packs/ packs/
 COPY prompts/ prompts/
 
-RUN pip install --no-cache-dir -e . && chown -R humetric:humetric /app
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps -e . && chown -R humetric:humetric /app
 
 USER humetric
 
