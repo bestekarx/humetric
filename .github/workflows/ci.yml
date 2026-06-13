@@ -36,7 +36,13 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install -e ".[dev]"
-      - run: pytest --timeout=30 -x || [ $? -eq 5 ]
+      - name: Run tests
+        run: |
+          if [ -d tests ] && [ -n "$(find tests -name 'test_*.py' -o -name '*_test.py' 2>/dev/null | head -1)" ]; then
+            pytest --timeout=30 -x
+          else
+            echo "No test files found (tests/ is gitignored in this repo). Skipping."
+          fi
         env:
           DATABASE_URL: postgresql+psycopg://humetric:humetric@localhost:5432/humetric
           DATABASE_URL_APP: postgresql+psycopg://humetric_app:humetric_app@localhost:5432/humetric
