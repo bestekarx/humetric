@@ -23,6 +23,8 @@ WORKDIR /app
 
 COPY --from=builder /app/deps /usr/local/lib/python3.11/site-packages
 COPY pyproject.toml .
+COPY alembic.ini .
+COPY alembic/ alembic/
 COPY src/ src/
 COPY packs/ packs/
 COPY prompts/ prompts/
