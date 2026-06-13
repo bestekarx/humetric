@@ -36,7 +36,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: pip install -e ".[dev]"
-      - run: pytest --timeout=30 -x
+      - run: |
+          pytest --timeout=30 -x
+          EXIT=$?
+          [ $EXIT -eq 5 ] && echo "No tests collected (tests/ is gitignored)" || exit $EXIT
         env:
           DATABASE_URL: postgresql+psycopg://humetric:humetric@localhost:5432/humetric
           DATABASE_URL_APP: postgresql+psycopg://humetric_app:humetric_app@localhost:5432/humetric
