@@ -220,7 +220,12 @@ class Store:
     @staticmethod
     async def verify_and_get_api_key(
         db: AsyncSession, full_key: str,
-    ) -> ApiKey | None:
+    ) -> tuple[ApiKey | None, str | None]:
+        """Return (api_key, None) on success or (api_key_or_None, reason) on failure.
+
+        Reasons: "not_found", "revoked", "expired".
+        On success the second element is None.
+        """
         key_hash = auth.hash_key(full_key)
         key_prefix = full_key[:12] if len(full_key) > 12 else full_key
 
@@ -229,25 +234,24 @@ class Store:
 
         if api_key is None:
             _log.warning("verify_api_key: not found prefix=%s", key_prefix)
-            return None
+            return None, "not_found"
 
         if api_key.is_revoked:
             _log.warning("verify_api_key: revoked id=%s prefix=%s tenant=%s", api_key.id, key_prefix, api_key.tenant_id)
-            return None
+            return api_key, "revoked"
 
         if api_key.expires_at:
             now = datetime.now(timezone.utc)
             expires = api_key.expires_at
             if expires.tzinfo is None:
-                from datetime import timezone as _tz
-                expires = expires.replace(tzinfo=_tz.utc)
+                expires = expires.replace(tzinfo=timezone.utc)
             if expires < now:
                 _log.warning("verify_api_key: expired id=%s prefix=%s tenant=%s expired_at=%s", api_key.id, key_prefix, api_key.tenant_id, expires)
-                return None
+                return api_key, "expired"
 
         api_key.last_used_at = datetime.now(timezone.utc)
         await db.commit()
-        return api_key
+        return api_key, None
 
     @staticmethod
     async def revoke_api_key(db: AsyncSession, key_id: int) -> bool:
@@ -359,6 +363,50 @@ class Store:
         await db.commit()
         await db.refresh(log)
         return log
+
+    @staticmethod
+    async def audit(
+        db: AsyncSession,
+        *,
+        tenant_id: int,
+        action: str,
+        entity_id: str | None = None,
+        api_key_id: int | None = None,
+        details: dict | None = None,
+    ) -> None:
+        """Fire-and-forget audit log write; swallows errors to never block the main path."""
+        try:
+            log = AuditLog(
+                tenant_id=tenant_id,
+                action=action,
+                entity_id=entity_id,
+                api_key_id=api_key_id,
+                details=details,
+            )
+            db.add(log)
+            await db.commit()
+        except Exception as exc:
+            _log.error("audit write failed action=%s tenant=%s err=%s", action, tenant_id, exc)
+
+    @staticmethod
+    async def list_audit_logs(
+        db: AsyncSession,
+        tenant_id: int,
+        *,
+        action: str | None = None,
+        entity_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AuditLog]:
+        from sqlalchemy import desc
+        q = select(AuditLog).where(AuditLog.tenant_id == tenant_id)
+        if action:
+            q = q.where(AuditLog.action == action)
+        if entity_id:
+            q = q.where(AuditLog.entity_id == entity_id)
+        q = q.order_by(desc(AuditLog.created_at)).limit(limit).offset(offset)
+        result = await db.execute(q)
+        return list(result.scalars().all())
 
     # --- Metric Pack (Spec 023) ---
 

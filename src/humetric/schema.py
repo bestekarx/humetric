@@ -409,6 +409,13 @@ class AuditLogRead(BaseModel):
     created_at: datetime
 
 
+class AuditLogListResponse(BaseModel):
+    items: list[AuditLogRead]
+    total: int
+    limit: int
+    offset: int
+
+
 # ── Error Envelope ─────────────────────────────────────────────
 
 class ErrorDetail(BaseModel):
@@ -539,6 +546,23 @@ class VerifyEmailResponse(BaseModel):
     verified: bool = True
     api_key: str | None = None
     message: str
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    email: str = Field(..., max_length=255)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class LoginResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    dashboard_token: str
+    tenant_id: int
+    name: str
+    email: str
+    expires_in: int = 86400
 
 
 class TenantDashboardResponse(BaseModel):

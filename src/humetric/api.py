@@ -64,6 +64,8 @@ from .schema import (
     QueryRequest,
     QueryResponse,
     RankedResult,
+    LoginRequest,
+    LoginResponse,
     RegisterRequest,
     RegisterResponse,
     ReviewerOverrideRequest,
@@ -71,6 +73,8 @@ from .schema import (
     RotateApiKeyResponse,
     SignalCreate,
     SignalStatus,
+    AuditLogListResponse,
+    AuditLogRead,
     SignalTrace,
     TenantDashboardResponse,
     TenantKeysRead,
@@ -560,6 +564,14 @@ async def create_api_key(
         expires_at=expires_at,
     )
 
+    await Store.audit(
+        db,
+        tenant_id=tenant_id,
+        action="api_key.created",
+        api_key_id=api_key.id,
+        details={"label": body.label, "prefix": body.prefix, "scopes": requested_scopes},
+    )
+
     return ApiKeyCreated(
         id=api_key.id,
         prefix=api_key.prefix,
@@ -620,7 +632,68 @@ async def delete_api_key(
             status_code=404,
             detail=error_envelope("api_key_not_found", f"API key not found: {key_id}").model_dump(),
         )
+    await Store.audit(
+        db,
+        tenant_id=request.state.tenant_id,
+        action="api_key.revoked",
+        api_key_id=key_id,
+        details={"revoked_by_key_id": request.state.api_key_id},
+    )
     return {"status": "revoked", "id": key_id}
+
+
+# ── GET /v1/audit-logs ────────────────────────────────────────
+
+@app.get(
+    f"{V1_PREFIX}/audit-logs",
+    tags=["Audit"],
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+    },
+)
+async def list_audit_logs(
+    request: Request,
+    action: str | None = None,
+    entity_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    _require_scope(request, "entities:read")
+    tenant_id = request.state.tenant_id
+
+    if limit > 500:
+        limit = 500
+
+    rows = await Store.list_audit_logs(
+        db, tenant_id, action=action, entity_id=entity_id, limit=limit, offset=offset,
+    )
+
+    from sqlalchemy import func, select as _select
+    from .db.models import AuditLog as _AuditLog
+    count_q = _select(func.count()).select_from(_AuditLog).where(_AuditLog.tenant_id == tenant_id)
+    if action:
+        count_q = count_q.where(_AuditLog.action == action)
+    if entity_id:
+        count_q = count_q.where(_AuditLog.entity_id == entity_id)
+    total = await db.scalar(count_q) or 0
+
+    return AuditLogListResponse(
+        items=[
+            AuditLogRead(
+                id=r.id,
+                action=r.action,
+                entity_id=r.entity_id,
+                details=r.details,
+                api_key_id=r.api_key_id,
+                created_at=r.created_at,
+            )
+            for r in rows
+        ],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ── POST /v1/packs (Spec 023) ──────────────────────────────────
@@ -888,13 +961,23 @@ async def create_consent(
             detail=error_envelope("entity_not_found", f"Entity not found: {body.entity_id}").model_dump(),
         )
 
+    status_val = body.status.value if hasattr(body.status, "value") else body.status or "granted"
     consent = await Store.create_consent(db, {
         "tenant_id": tenant_id,
         "entity_id": body.entity_id,
         "scope": body.scope,
-        "status": body.status.value if hasattr(body.status, "value") else body.status or "granted",
+        "status": status_val,
         "expires_at": body.expires_at,
     })
+
+    await Store.audit(
+        db,
+        tenant_id=tenant_id,
+        action="consent.granted" if status_val == "granted" else "consent.updated",
+        entity_id=body.entity_id,
+        api_key_id=request.state.api_key_id,
+        details={"scope": body.scope, "status": status_val},
+    )
 
     return ConsentRead(
         id=consent.id,
@@ -976,6 +1059,16 @@ async def delete_consent(
     else:
         count = await Store.revoke_all_consents(db, entity_id, tenant_id)
         ok = count > 0
+
+    if ok:
+        await Store.audit(
+            db,
+            tenant_id=tenant_id,
+            action="consent.revoked",
+            entity_id=entity_id,
+            api_key_id=request.state.api_key_id,
+            details={"scope": scope or "all"},
+        )
 
     return {"revoked": ok, "entity_id": entity_id, "scope": scope or "all"}
 
@@ -1242,6 +1335,38 @@ async def verify_email(token: str):
 
         await db.commit()
         return VerifyEmailResponse(verified=True, api_key=api_key, message="Email verified." if not show_api_key else "Email verified. Your API key is shown only once.").model_dump()
+
+
+# ── Dashboard login (email + password → session token) ──────────
+
+@app.post(f"{V1_PREFIX}/login", tags=["Registration"])
+async def login(body: LoginRequest):
+    factory = get_async_session_factory()
+    async with factory() as db:
+        result = await db.execute(select(Tenant).where(Tenant.email == body.email))
+        tenant = result.scalar_one_or_none()
+
+    invalid = JSONResponse(
+        status_code=401,
+        content=error_envelope("invalid_credentials", "Invalid email or password").model_dump(),
+    )
+    if tenant is None or not tenant.password_hash:
+        return invalid
+    if not _bcrypt.checkpw(body.password.encode()[:72], tenant.password_hash.encode()):
+        return invalid
+    if not tenant.email_verified:
+        return JSONResponse(
+            status_code=403,
+            content=error_envelope("email_not_verified", "Please verify your email before logging in").model_dump(),
+        )
+
+    token = _serializer.dumps({"tid": tenant.id, "t": "ds"})
+    return LoginResponse(
+        dashboard_token=token,
+        tenant_id=tenant.id,
+        name=tenant.name or tenant.email.split("@")[0],
+        email=tenant.email,
+    )
 
 
 # ── Tenant self-service endpoints (Spec 026) ────────────────────
