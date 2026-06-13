@@ -9,7 +9,7 @@
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6fa; color: #333; }
         header { background: #1a1a2e; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
         header a { color: #ccc; text-decoration: none; }
-        .container { max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+        .container { max-width: 860px; margin: 2rem auto; padding: 0 1rem; }
         .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .card h3 { margin-bottom: 1rem; font-size: 1.1rem; color: #1a1a2e; }
         .api-key-input { display: flex; gap: 0.5rem; }
@@ -17,6 +17,8 @@
         .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.875rem; }
         .btn-primary { background: #e94560; color: white; }
         .btn-outline { background: white; border: 1px solid #ddd; }
+        .btn-danger { background: #fff0f0; color: #c0392b; border: 1px solid #f5c6cb; }
+        .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
         .usage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
         .usage-item { text-align: center; padding: 1rem; background: #f8f9fa; border-radius: 6px; }
         .usage-item .value { font-size: 1.5rem; font-weight: 700; color: #1a1a2e; }
@@ -31,6 +33,33 @@
         .message { margin-top: 0.5rem; font-size: 0.875rem; color: #666; }
         .message.success { color: #2e7d32; }
         .message.error { color: #e94560; }
+
+        /* API Key table */
+        .key-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+        .key-table th { text-align: left; padding: 0.5rem; border-bottom: 2px solid #eee; color: #666; font-weight: 600; }
+        .key-table td { padding: 0.5rem; border-bottom: 1px solid #f0f0f0; vertical-align: middle; }
+        .key-table tr:last-child td { border-bottom: none; }
+        .scope-badge { display: inline-block; background: #f0f0f0; border-radius: 3px; padding: 0.1rem 0.4rem; font-size: 0.7rem; margin: 1px; font-family: monospace; }
+        .revoked-row { opacity: 0.45; }
+        .status-active { color: #2e7d32; font-weight: 600; }
+        .status-revoked { color: #c0392b; }
+        .status-expired { color: #e67e22; }
+
+        /* Modal */
+        .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .modal { background: white; border-radius: 8px; padding: 1.5rem; width: 480px; max-width: 95vw; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .modal h3 { margin-bottom: 1rem; }
+        .form-group { margin-bottom: 0.75rem; }
+        .form-group label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 0.3rem; color: #444; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.875rem; }
+        .form-group textarea { font-family: monospace; resize: vertical; min-height: 60px; }
+        .form-hint { font-size: 0.75rem; color: #888; margin-top: 0.2rem; }
+        .modal-footer { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1rem; }
+
+        /* New key reveal */
+        .new-key-box { background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 1rem; margin: 1rem 0; }
+        .new-key-box .key-value { font-family: monospace; word-break: break-all; font-size: 0.85rem; margin: 0.5rem 0; }
+        .new-key-box p { font-size: 0.8rem; color: #166534; }
     </style>
 </head>
 <body>
@@ -43,7 +72,7 @@
         <div id="login-card" class="card">
             <h3>API Key ile Giris Yapin</h3>
             <div class="api-key-input">
-                <input type="password" id="api-key-input" placeholder="hu_live_...">
+                <input type="password" id="api-key-input" placeholder="hm_live_...">
                 <button class="btn btn-primary" onclick="login()">Giris</button>
             </div>
         </div>
@@ -55,8 +84,8 @@
             <div class="card">
                 <h3>Abonelik</h3>
                 <p>Tier: <span id="tier-badge" class="tier-badge"></span></p>
-                <p>Durum: <span id="sub-status"></span></p>
-                <p><button class="btn btn-outline" id="portal-btn" onclick="openPortal()" style="display:none">Abonelik Yonetimi (Stripe)</button></p>
+                <p style="margin-top:0.5rem">Durum: <span id="sub-status"></span></p>
+                <p style="margin-top:0.5rem"><button class="btn btn-outline" id="portal-btn" onclick="openPortal()" style="display:none">Abonelik Yonetimi (Stripe)</button></p>
             </div>
 
             <div class="card">
@@ -78,14 +107,25 @@
             </div>
 
             <div class="card">
-                <h3>API Key</h3>
-                <p>Prefix: <code id="api-prefix">-</code></p>
-                <div class="api-key-input">
-                    <input type="text" id="api-key-show" readonly>
-                    <button class="btn btn-outline" id="show-hide-btn" onclick="toggleApiKey()">Goster</button>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                    <h3 style="margin:0">API Anahtarlari</h3>
+                    <button class="btn btn-primary btn-sm" onclick="openCreateModal()">+ Yeni Anahtar</button>
                 </div>
-                <button class="btn btn-outline" onclick="rotateApiKey()" style="margin-top:0.5rem">API Key Yenile</button>
-                <p id="rotate-message" class="message"></p>
+                <div id="keys-loading" style="color:#888;font-size:0.875rem">Yukleniyor...</div>
+                <table class="key-table hidden" id="keys-table">
+                    <thead>
+                        <tr>
+                            <th>Etiket / Prefix</th>
+                            <th>Scopes</th>
+                            <th>Durum</th>
+                            <th>Son Kullanim</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="keys-tbody"></tbody>
+                </table>
+                <p id="keys-empty" class="hidden" style="color:#888;font-size:0.875rem">Henuz API anahtari yok.</p>
+                <p id="keys-message" class="message"></p>
             </div>
 
             <div class="card">
@@ -109,6 +149,46 @@
             <div class="card">
                 <button class="btn btn-primary" onclick="upgrade('pro')">Pro'ya Yukselt ($49/ay)</button>
                 <button class="btn btn-outline" onclick="upgrade('enterprise')" style="margin-left:0.5rem">Enterprise ($199/ay)</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create API Key Modal -->
+    <div id="create-modal" class="modal-backdrop hidden">
+        <div class="modal">
+            <h3>Yeni API Anahtari Olustur</h3>
+            <div class="form-group">
+                <label>Etiket (opsiyonel)</label>
+                <input type="text" id="new-key-label" placeholder="ornek: production-key">
+            </div>
+            <div class="form-group">
+                <label>Tip</label>
+                <select id="new-key-prefix">
+                    <option value="hm_live">hm_live (Production)</option>
+                    <option value="hm_test">hm_test (Test)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Scopes (virgülle ayrilmis)</label>
+                <textarea id="new-key-scopes">signals:write, entities:read, entities:write, signals:read, query, packs:read</textarea>
+                <div class="form-hint">Kullanilabilir: signals:read, signals:write, entities:read, entities:write, query, packs:read, packs:admin</div>
+            </div>
+            <div class="form-group">
+                <label>Gecerlilik (gun, opsiyonel)</label>
+                <input type="number" id="new-key-days" placeholder="365" min="1" max="730">
+                <div class="form-hint">Bos birakilirsa süresiz.</div>
+            </div>
+            <div id="new-key-result" class="hidden">
+                <div class="new-key-box">
+                    <p><strong>API anahtariniz olusturuldu. Bir kez gosterilir, lutfen kaydedin:</strong></p>
+                    <div class="key-value" id="new-key-value"></div>
+                    <button class="btn btn-outline btn-sm" onclick="copyNewKey()">Kopyala</button>
+                </div>
+            </div>
+            <p id="create-error" class="message error"></p>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeCreateModal()">Kapat</button>
+                <button class="btn btn-primary" id="create-btn" onclick="createApiKey()">Olustur</button>
             </div>
         </div>
     </div>

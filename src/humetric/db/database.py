@@ -23,6 +23,9 @@ _SessionLocal = None
 _async_engine = None
 _AsyncSessionLocal = None
 
+_admin_async_engine = None
+_AdminAsyncSessionLocal = None
+
 
 def _get_sync_url() -> str:
     return config.DATABASE_URL.replace("+asyncpg", "+psycopg") if "+asyncpg" in config.DATABASE_URL else config.DATABASE_URL
@@ -82,20 +85,23 @@ def get_async_session_factory():
 
 
 def get_admin_async_session_factory():
-    """Superuser async session for seeding/migrations.
+    """Superuser async session — uses DATABASE_URL (admin role, RLS bypass).
 
-    Uses DATABASE_URL (admin role, RLS bypass).
+    The engine is cached globally so connection pools are not leaked on every call.
     """
-    config.require_db()
-    url = config.DATABASE_URL
-    if "+asyncpg" not in url:
-        url = url.replace("+psycopg", "+asyncpg").replace("postgresql://", "postgresql+asyncpg://")
-    engine = create_async_engine(url, pool_pre_ping=True, echo=False)
-    return async_sessionmaker(
-        bind=engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
+    global _admin_async_engine, _AdminAsyncSessionLocal
+    if _AdminAsyncSessionLocal is None:
+        config.require_db()
+        url = config.DATABASE_URL
+        if "+asyncpg" not in url:
+            url = url.replace("+psycopg", "+asyncpg").replace("postgresql://", "postgresql+asyncpg://")
+        _admin_async_engine = create_async_engine(url, pool_pre_ping=True, echo=False)
+        _AdminAsyncSessionLocal = async_sessionmaker(
+            bind=_admin_async_engine,
+            class_=AsyncSession,
+            expire_on_commit=False,
+        )
+    return _AdminAsyncSessionLocal
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

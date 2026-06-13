@@ -7,6 +7,7 @@ All operations run on an async session.
 from __future__ import annotations
 
 import base64
+import logging
 import os as _os
 from datetime import datetime, timezone
 
@@ -15,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, config
 from .db.models import ApiKey, AuditLog, Consent, Entity, EntityMetric, MetricPack, Signal, Task, Tenant, UsageRecord
+
+_log = logging.getLogger(__name__)
 
 
 class Store:
@@ -219,18 +222,28 @@ class Store:
         db: AsyncSession, full_key: str,
     ) -> ApiKey | None:
         key_hash = auth.hash_key(full_key)
-        result = await db.execute(
-            select(ApiKey).where(
-                ApiKey.key_hash == key_hash,
-                ApiKey.is_revoked == False,  # noqa: E712
-            )
-        )
+        key_prefix = full_key[:12] if len(full_key) > 12 else full_key
+
+        result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))
         api_key = result.scalar_one_or_none()
+
         if api_key is None:
+            _log.warning("verify_api_key: not found prefix=%s", key_prefix)
             return None
 
-        if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+        if api_key.is_revoked:
+            _log.warning("verify_api_key: revoked id=%s prefix=%s tenant=%s", api_key.id, key_prefix, api_key.tenant_id)
             return None
+
+        if api_key.expires_at:
+            now = datetime.now(timezone.utc)
+            expires = api_key.expires_at
+            if expires.tzinfo is None:
+                from datetime import timezone as _tz
+                expires = expires.replace(tzinfo=_tz.utc)
+            if expires < now:
+                _log.warning("verify_api_key: expired id=%s prefix=%s tenant=%s expired_at=%s", api_key.id, key_prefix, api_key.tenant_id, expires)
+                return None
 
         api_key.last_used_at = datetime.now(timezone.utc)
         await db.commit()
