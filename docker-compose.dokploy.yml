@@ -19,7 +19,7 @@ services:
       context: .
       dockerfile: Dockerfile.prod
     command: >
-      sh -c "alembic upgrade head && echo 'Migrations done'"
+      sh -c "python -m alembic upgrade head && echo 'Migrations done'"
     depends_on:
       db:
         condition: service_healthy

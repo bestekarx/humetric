@@ -808,6 +808,47 @@ class Store:
         )
         return list(result.scalars().all())
 
+    # --- Analytics lakehouse export (Spec 010) ---
+
+    @staticmethod
+    async def list_active_tenants(db: AsyncSession) -> list[Tenant]:
+        """Return all active tenants (admin session, no RLS)."""
+        result = await db.execute(
+            select(Tenant).where(Tenant.status == "active").order_by(Tenant.id)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def create_lakehouse_export_task(
+        db: AsyncSession, tenant_id: int, export_date: str,
+    ) -> Task:
+        """Enqueue a lakehouse_export task for the given tenant and date."""
+        return await Store.create_task(db, {
+            "tenant_id": tenant_id,
+            "signal_id": None,
+            "task_type": "lakehouse_export",
+            "status": "queued",
+            "payload": {"export_date": export_date},
+        })
+
+    @staticmethod
+    async def has_export_task_for_date(
+        db: AsyncSession, tenant_id: int, export_date: str,
+    ) -> bool:
+        """Return True if a non-failed lakehouse_export task exists for (tenant, date)."""
+        from sqlalchemy import and_
+
+        result = await db.execute(
+            select(Task.id).where(
+                and_(
+                    Task.tenant_id == tenant_id,
+                    Task.task_type == "lakehouse_export",
+                    Task.status.not_in(["failed"]),
+                    Task.payload["export_date"].astext == export_date,
+                )
+            ).limit(1)
+        )
+        return result.scalar_one_or_none() is not None
 
 # ── helpers ────────────────────────────────────────────────────
 
