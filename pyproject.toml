@@ -35,6 +35,11 @@ dev = [
     "rich>=13.7",
     "asgi-lifespan>=2.1",
 ]
+analytics = [
+    "pyarrow>=15",
+    "duckdb>=1.0",
+    "boto3>=1.34",
+]
 
 [project.scripts]
 humetric-api = "humetric.api:main"

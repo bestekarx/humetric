@@ -101,6 +101,26 @@ FREE_TIER_ENTITY_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_ENTITY_LIMIT", "
 FREE_TIER_PACK_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_PACK_LIMIT", "1"))
 
 
+# Analytics lakehouse export
+EXPORT_ENABLED = os.environ.get("HUMETRIC_EXPORT_ENABLED", "false").lower() == "true"
+EXPORT_STORAGE = os.environ.get("HUMETRIC_EXPORT_STORAGE", "local")  # local | s3
+EXPORT_LOCAL_DIR = Path(os.environ.get("HUMETRIC_EXPORT_LOCAL_DIR", str(ROOT / "lakehouse")))
+EXPORT_S3_BUCKET = os.environ.get("HUMETRIC_EXPORT_S3_BUCKET", "")
+EXPORT_S3_PREFIX = os.environ.get("HUMETRIC_EXPORT_S3_PREFIX", "")
+EXPORT_S3_ENDPOINT_URL = os.environ.get("HUMETRIC_EXPORT_S3_ENDPOINT_URL", "")
+EXPORT_S3_REGION = os.environ.get("HUMETRIC_EXPORT_S3_REGION", "auto")
+EXPORT_S3_ACCESS_KEY_ID = (
+    os.environ.get("HUMETRIC_EXPORT_S3_ACCESS_KEY_ID", "")
+    or os.environ.get("AWS_ACCESS_KEY_ID", "")
+)
+EXPORT_S3_SECRET_ACCESS_KEY = (
+    os.environ.get("HUMETRIC_EXPORT_S3_SECRET_ACCESS_KEY", "")
+    or os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+)
+EXPORT_HOUR_UTC = int(os.environ.get("HUMETRIC_EXPORT_HOUR_UTC", "2"))
+EXPORT_SCHEDULER_INTERVAL_S = float(os.environ.get("HUMETRIC_EXPORT_SCHEDULER_INTERVAL_S", "300"))
+
+
 def require_keys() -> None:
     """Check that the required API keys are present; raise if any are missing."""
     missing = [

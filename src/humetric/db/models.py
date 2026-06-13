@@ -393,7 +393,7 @@ class Task(Base):
             name="ck_task_status",
         ),
         CheckConstraint(
-            "task_type IN ('signal_process', 're_embed')",
+            "task_type IN ('signal_process', 're_embed', 'lakehouse_export')",
             name="ck_task_type",
         ),
         Index("ix_task_tenant", "tenant_id"),

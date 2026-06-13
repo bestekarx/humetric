@@ -166,6 +166,22 @@ async def process_re_embed_task(db: AsyncSession, task) -> None:
     await Store.update_entity_embedding(db, entity_id, task.tenant_id, embed_text)
 
 
+async def process_lakehouse_export_task(db: AsyncSession, task) -> None:
+    """Export tenant data to the analytics lakehouse (Parquet on local/S3)."""
+    try:
+        from .analytics.export import run_tenant_export
+    except RuntimeError as exc:
+        raise ValueError(str(exc)) from exc  # non-retryable: missing analytics deps
+
+    from datetime import date as date_type
+
+    export_date_str = task.payload.get("export_date")
+    export_date = date_type.fromisoformat(export_date_str) if export_date_str else None
+
+    stats = await run_tenant_export(db, task.tenant_id, export_date)
+    _log.info("Lakehouse export task %d done: %s", task.id, stats)
+
+
 async def handle_failure(db: AsyncSession, task, exc: Exception) -> None:
     """Decide whether to retry or permanently fail on error."""
 
@@ -205,6 +221,8 @@ async def process_one_task(db: AsyncSession, task) -> None:
             await process_signal_task(db, task)
         elif task.task_type == "re_embed":
             await process_re_embed_task(db, task)
+        elif task.task_type == "lakehouse_export":
+            await process_lakehouse_export_task(db, task)
         else:
             await Store.fail_task_permanently(db, task.id, f"Unknown task_type: {task.task_type}")
             return
@@ -230,6 +248,43 @@ async def process_one_task(db: AsyncSession, task) -> None:
             pass
 
 
+async def _export_scheduler(factory) -> None:
+    """Nightly scheduler: enqueue a lakehouse_export task per active tenant once per day.
+
+    Runs every EXPORT_SCHEDULER_INTERVAL_S seconds. When UTC hour reaches
+    EXPORT_HOUR_UTC and no non-failed export task exists for (tenant, today),
+    a task is enqueued. Restart-safe: misses are caught on next wake-up.
+    """
+    from datetime import date
+    from datetime import datetime as dt
+
+    _log.info(
+        "Export scheduler started (hour=%d UTC, interval=%.0fs)",
+        config.EXPORT_HOUR_UTC, config.EXPORT_SCHEDULER_INTERVAL_S,
+    )
+    while _running:
+        await asyncio.sleep(config.EXPORT_SCHEDULER_INTERVAL_S)
+        if not _running:
+            break
+        now = dt.now(timezone.utc)
+        if now.hour < config.EXPORT_HOUR_UTC:
+            continue
+        today = date.today().isoformat()
+        try:
+            async with factory() as db:
+                tenants = await Store.list_active_tenants(db)
+                for tenant in tenants:
+                    already = await Store.has_export_task_for_date(db, tenant.id, today)
+                    if not already:
+                        await Store.create_lakehouse_export_task(db, tenant.id, today)
+                        _log.info(
+                            "Enqueued lakehouse_export for tenant %d date=%s",
+                            tenant.id, today,
+                        )
+        except Exception as exc:
+            _log.exception("Export scheduler error: %s", exc)
+
+
 async def main():
     """Worker main loop."""
     _log.info("Worker starting. Poll interval: %.1fs, batch size: %d, max retries: %d",
@@ -243,22 +298,36 @@ async def main():
     from .db.database import get_admin_async_session_factory
 
     factory = get_admin_async_session_factory()
-    while _running:
-        try:
-            async with factory() as db:
-                tasks = await Store.get_next_task(db, batch_size=config.WORKER_BATCH_SIZE)
-                if tasks:
-                    _log.info("Fetched %d tasks", len(tasks))
-                    for task in tasks:
-                        if not _running:
-                            break
-                        await process_one_task(db, task)
 
-        except Exception as exc:
-            _log.exception("Worker loop error: %s", exc)
+    scheduler_task: asyncio.Task | None = None
+    if config.EXPORT_ENABLED:
+        scheduler_task = asyncio.create_task(_export_scheduler(factory))
+        _log.info("Nightly export scheduler enabled (hour=%d UTC)", config.EXPORT_HOUR_UTC)
 
-        if _running:
-            await asyncio.sleep(config.WORKER_POLL_INTERVAL_S)
+    try:
+        while _running:
+            try:
+                async with factory() as db:
+                    tasks = await Store.get_next_task(db, batch_size=config.WORKER_BATCH_SIZE)
+                    if tasks:
+                        _log.info("Fetched %d tasks", len(tasks))
+                        for task in tasks:
+                            if not _running:
+                                break
+                            await process_one_task(db, task)
+
+            except Exception as exc:
+                _log.exception("Worker loop error: %s", exc)
+
+            if _running:
+                await asyncio.sleep(config.WORKER_POLL_INTERVAL_S)
+    finally:
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            try:
+                await scheduler_task
+            except asyncio.CancelledError:
+                pass
 
     _log.info("Worker shutdown complete")
 
