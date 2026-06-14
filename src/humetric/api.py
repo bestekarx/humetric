@@ -626,6 +626,12 @@ async def delete_api_key(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    if getattr(request.state, "api_key_id", None) is not None and key_id == request.state.api_key_id:
+        raise HTTPException(
+            status_code=403,
+            detail=error_envelope("cannot_revoke_self", "Cannot revoke the API key used for this request. Create a new key first, then use it to revoke this one.").model_dump(),
+        )
+
     ok = await Store.revoke_api_key(db, key_id)
     if not ok:
         raise HTTPException(

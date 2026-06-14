@@ -74,6 +74,7 @@ class ErrorCode(str, Enum):
     email_not_verified = "email_not_verified"
     invalid_verification_token = "invalid_verification_token"
     captcha_failed = "captcha_failed"
+    cannot_revoke_self = "cannot_revoke_self"
 
 
 # ── Tenant ─────────────────────────────────────────────────────
