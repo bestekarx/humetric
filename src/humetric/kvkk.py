@@ -100,7 +100,12 @@ async def filter_sensitive_metrics(
 
             if not has_consent:
                 allowed_scopes = metric_visible_map.get(key, [])
-                if allowed_scopes and not (set(scopes) & set(allowed_scopes)):
+                if consent_scope:
+                    # Consent is required but absent: hidden by default, unless
+                    # the caller's scopes are explicitly listed in visible_to.
+                    if not (set(scopes) & set(allowed_scopes)):
+                        continue
+                elif allowed_scopes and not (set(scopes) & set(allowed_scopes)):
                     continue
         filtered.append(m)
     return filtered
