@@ -210,7 +210,7 @@ curl -X POST "$BASE/query" \
 | Layer | Technology |
 |-------|-----------|
 | API | FastAPI (async), Uvicorn |
-| Database | PostgreSQL 15 + pgvector |
+| Database | PostgreSQL 16 + pgvector |
 | ORM | SQLAlchemy 2.0 (async) |
 | Auth | Bearer API key (SHA-256 hashed) |
 | LLM | Anthropic Claude (Haiku + Sonnet) |
@@ -280,38 +280,81 @@ HUMETRIC_EMBEDDING_PROVIDER=cohere   # embed-english-v3.0 (1024 dim)
 
 All providers include built-in exponential backoff and retry logic.
 
-## SDK
+## Client SDKs
 
-Auto-generated client SDKs from OpenAPI 3.1 spec:
+Client SDKs are generated from the OpenAPI 3.1 spec for **Python,
+TypeScript, .NET, PHP, and Java**. They are not yet published to package
+registries — generate them yourself from the spec:
 
-| Language | Install |
-|----------|---------|
-| Python | `pip install humetric-sdk` |
-| TypeScript | `npm install @humetric/sdk` |
-| Go | `go get github.com/humetric/humetric-go` |
-| Java | Maven `com.humetric:humetric-client` |
-| Ruby | `gem install humetric-sdk` |
+```bash
+# 1. Export the OpenAPI spec
+python generate_openapi.py        # writes openapi.json
 
-Generate SDKs from `scripts/generate-sdks.sh`.
+# 2. Generate a client with openapi-generator, e.g. Python
+npx @openapitools/openapi-generator-cli generate \
+  -i openapi.json \
+  -g python \
+  -c openapi-generator-config/python.yaml \
+  -o ./humetric-sdk-python
+```
+
+Per-language generator configs live in `openapi-generator-config/`
+(`python`, `typescript`, `dotnet`, `php`, `java`). The
+[`SDK Generate`](.github/workflows/sdk-generate.yml) GitHub Actions workflow
+(manual `workflow_dispatch`) builds all five clients from the spec.
 
 ## API Overview
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| **Packs** | | |
 | POST | `/v1/packs` | Create or update a Metric Pack |
+| GET | `/v1/packs` | List Metric Packs |
 | POST | `/v1/packs/wizard` | AI-generated pack from description |
+| GET | `/v1/packs/{pack_key}` | Get a Metric Pack |
+| PUT | `/v1/packs/{pack_key}` | Update a Metric Pack |
+| **Entities** | | |
 | POST | `/v1/entities` | Create or upsert an entity |
 | GET | `/v1/entities/{id}` | Get entity with metrics |
 | GET | `/v1/entities/{id}/metrics` | Get entity metrics only |
+| **Signals** | | |
 | POST | `/v1/signals` | Submit a signal for processing |
 | GET | `/v1/signals/{id}` | Check signal processing status |
 | GET | `/v1/signals/{id}/trace` | Get full extraction/curation trace |
+| **Query** | | |
 | POST | `/v1/query` | Hybrid search + ranked entity query |
+| **Metrics review** | | |
+| GET | `/v1/metrics/pending-review` | List metrics awaiting review |
+| PUT | `/v1/metrics/{entity_id}/{metric_key}/review` | Approve/reject a metric |
+| **API keys** | | |
 | POST | `/v1/api-keys` | Create scoped API key |
+| GET | `/v1/api-keys` | List API keys |
+| DELETE | `/v1/api-keys/{key_id}` | Revoke an API key |
+| **Consent (KVKK/GDPR)** | | |
 | POST | `/v1/consent` | Grant consent for sensitive metrics |
+| GET | `/v1/consent/{entity_id}` | Get consent state for an entity |
+| DELETE | `/v1/consent/{entity_id}` | Revoke consent |
+| **Tenant & BYO keys** | | |
+| GET | `/v1/tenant/keys` | Get BYO provider key status |
+| PUT | `/v1/tenant/keys` | Set BYO Anthropic/Voyage keys |
+| DELETE | `/v1/tenant/keys` | Remove BYO keys |
 | GET | `/v1/tenant/dashboard` | Usage and subscription status |
 | POST | `/v1/tenant/rotate-api-key` | Rotate default API key |
+| **Billing** | | |
+| POST | `/v1/billing/checkout` | Create a Stripe checkout session |
+| POST | `/v1/billing/webhook` | Stripe webhook receiver |
+| **Auth & registration** | | |
+| POST | `/v1/register` | Register a new tenant |
+| GET | `/v1/verify-email` | Verify a registration email |
+| POST | `/v1/login` | Tenant login |
+| **Usage & audit** | | |
 | GET | `/v1/usage` | Get usage report |
+| GET | `/v1/admin/usage` | Admin usage report (all tenants) |
+| GET | `/v1/audit-logs` | Read audit log events |
+| **Health** | | |
+| GET | `/healthz` | Liveness probe |
+| GET | `/healthz/db` | Database readiness probe |
+| GET | `/healthz/worker` | Worker heartbeat probe |
 
 Full OpenAPI docs at `http://localhost:8002/docs`. Postman collection at `postman/humetric-collection.json`.
 
@@ -339,7 +382,7 @@ All settings via environment variables (see `.env.example`):
 pip install -e ".[dev]"
 docker compose up -d        # PostgreSQL + worker
 alembic upgrade head        # Run migrations
-pytest                      # Run tests (18 test files)
+pytest                      # Run tests (written locally — see CONTRIBUTING.md)
 ```
 
 ## Deployment
