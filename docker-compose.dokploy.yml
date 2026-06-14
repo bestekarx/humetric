@@ -72,6 +72,12 @@ services:
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
       HUMETRIC_ENCRYPTION_KEY: ${HUMETRIC_ENCRYPTION_KEY:-}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; p='/tmp/humetric_worker_heartbeat'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<300 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
     restart: unless-stopped
 
 volumes:

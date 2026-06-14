@@ -306,6 +306,7 @@ async def main():
 
     try:
         while _running:
+            _write_heartbeat()
             try:
                 async with factory() as db:
                     tasks = await Store.get_next_task(db, batch_size=config.WORKER_BATCH_SIZE)
@@ -337,6 +338,15 @@ def _find_metric_def(pack_def: dict, metric_key: str) -> dict | None:
         if m.get("key") == metric_key:
             return m
     return None
+
+
+def _write_heartbeat() -> None:
+    """Touch the heartbeat file so the container healthcheck can detect a stalled loop."""
+    try:
+        with open(config.WORKER_HEARTBEAT_FILE, "w") as f:
+            f.write(datetime.now(timezone.utc).isoformat())
+    except OSError as exc:
+        _log.warning("Failed to write worker heartbeat: %s", exc)
 
 
 if __name__ == "__main__":

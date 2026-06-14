@@ -35,6 +35,7 @@ EMBED_DIM_COHERE = int(os.environ.get("HUMETRIC_EMBED_DIM_COHERE", "1024"))
 WORKER_POLL_INTERVAL_S = float(os.environ.get("HUMETRIC_WORKER_POLL_INTERVAL_S", "1"))
 WORKER_BATCH_SIZE = int(os.environ.get("HUMETRIC_WORKER_BATCH_SIZE", "5"))
 TASK_MAX_RETRIES = int(os.environ.get("HUMETRIC_TASK_MAX_RETRIES", "3"))
+WORKER_HEARTBEAT_FILE = os.environ.get("HUMETRIC_WORKER_HEARTBEAT_FILE", "/tmp/humetric_worker_heartbeat")
 
 AGENT_MODEL = os.environ.get("HUMETRIC_AGENT_MODEL", "claude-haiku-4-5-20251001")
 MATCHMAKER_MODEL = os.environ.get("HUMETRIC_MATCHMAKER_MODEL", "claude-sonnet-4-6")
