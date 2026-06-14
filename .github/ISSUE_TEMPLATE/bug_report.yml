@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a problem so we can fix it
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report! Please fill out the
+        sections below so we can reproduce and fix the issue quickly.
+
+        ⚠️ **Do not report security vulnerabilities here.** Follow our
+        [security policy](https://github.com/bestekarx/humetric/security/policy)
+        instead.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce the behaviour?
+      placeholder: |
+        1. Configure '...'
+        2. Send signal '...'
+        3. Call endpoint '...'
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened? Include error messages.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: HuMetric version, Python version, OS, deployment method.
+      value: |
+        - HuMetric version:
+        - Python version:
+        - OS:
+        - Deployment (local / docker / prod):
+        - Embedding provider (voyage / openai / cohere):
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste any relevant log output. This is automatically formatted, so no
+        need for backticks. **Remove any secrets, API keys, or personal data.**
+      render: shell
+    validations:
+      required: false

@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an idea or enhancement
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement! Please describe the problem you
+        are trying to solve, not just the solution you have in mind.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: |
+        What problem does this solve? Is your request related to a frustration
+        or limitation? E.g. "I'm always frustrated when ..."
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: A clear description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any alternative solutions or workarounds you have considered.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: |
+        Anything else — affected component (api, worker, agents, rag, ...),
+        use case, screenshots, or links.
+    validations:
+      required: false

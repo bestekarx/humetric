@@ -1,6 +1,22 @@
+<div align="center">
+
+<a href="https://gethumetric.com/">
+  <img src="https://gethumetric.com/favicon.svg" alt="HuMetric logo" width="96" height="96" />
+</a>
+
 # HuMetric
 
 **Domain-agnostic entity intelligence platform.** Turn unstructured signals into calibrated, decaying entity metrics using LLM-powered agents — no code changes required per domain.
+
+[![CI](https://github.com/bestekarx/humetric/actions/workflows/ci.yml/badge.svg)](https://github.com/bestekarx/humetric/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+
+[**Website**](https://gethumetric.com/) · [**Dashboard**](https://gethumetric.com/dashboard) · [**Docs**](docs/) · [**Contributing**](CONTRIBUTING.md)
+
+</div>
+
+---
 
 ## What It Does
 
@@ -334,6 +350,25 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 Worker runs alongside the database; scale horizontally by adding more worker replicas. The task queue uses PostgreSQL advisory locking for safe concurrent consumption.
+
+## Contributing
+
+Contributions are welcome! Please read our
+[Contributing Guide](CONTRIBUTING.md) to get started — it covers the
+development setup, coding conventions, commit format, and the pull request
+process.
+
+- 🐛 **Found a bug or have an idea?** Open an
+  [issue](https://github.com/bestekarx/humetric/issues/new/choose).
+- 💬 **Questions or discussion?** Use
+  [GitHub Discussions](https://github.com/bestekarx/humetric/discussions).
+- 🔒 **Security vulnerability?** Please follow our
+  [Security Policy](SECURITY.md) — do not open a public issue.
+- 🤝 By participating you agree to our
+  [Code of Conduct](CODE_OF_CONDUCT.md).
+
+New contributors: look for issues labelled
+[`good first issue`](https://github.com/bestekarx/humetric/labels/good%20first%20issue).
 
 ## License
 
