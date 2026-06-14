@@ -75,6 +75,7 @@ class ErrorCode(str, Enum):
     invalid_verification_token = "invalid_verification_token"
     captcha_failed = "captcha_failed"
     cannot_revoke_self = "cannot_revoke_self"
+    cannot_revoke_last_key = "cannot_revoke_last_key"
 
 
 # ── Tenant ─────────────────────────────────────────────────────

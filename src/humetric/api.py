@@ -632,6 +632,19 @@ async def delete_api_key(
             detail=error_envelope("cannot_revoke_self", "Cannot revoke the API key used for this request. Create a new key first, then use it to revoke this one.").model_dump(),
         )
 
+    from sqlalchemy import func
+    active_count_result = await db.execute(
+        select(func.count()).select_from(ApiKey).where(
+            ApiKey.tenant_id == request.state.tenant_id,
+            ApiKey.is_revoked == False,  # noqa: E712
+        )
+    )
+    if active_count_result.scalar() <= 1:
+        raise HTTPException(
+            status_code=403,
+            detail=error_envelope("cannot_revoke_last_key", "Cannot revoke the last active API key. Create a new key first.").model_dump(),
+        )
+
     ok = await Store.revoke_api_key(db, key_id)
     if not ok:
         raise HTTPException(
