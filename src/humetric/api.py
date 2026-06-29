@@ -26,7 +26,7 @@ from .auth import hash_key
 from .agents import ranker
 from .config import AUTH_SECRET
 from .db.database import get_async_session_factory, get_db, get_tenant_db
-from .db.models import MeteringRecord, Task, Tenant
+from .db.models import ApiKey, MeteringRecord, Task, Tenant
 from .middleware.auth import AuthMiddleware
 from .middleware.billing_guard import BillingGuardMiddleware
 from .middleware.metrics import PrometheusMiddleware
@@ -1272,30 +1272,15 @@ async def register(body: RegisterRequest, request: Request):
         await db.flush()
 
         if auto_verify:
-            # No email step: mint the default API key now and return it once.
-            from .db.models import ApiKey
-            from datetime import timedelta
-
-            await db.execute(
-                text("SELECT set_config('app.tenant_id', :t, false)"),
-                {"t": str(tenant.id)},
-            )
-            raw_key = f"hm_live_{secrets.token_urlsafe(32)}"
-            db.add(ApiKey(
-                tenant_id=tenant.id,
-                prefix="hm_live",
-                key_hash=hash_key(raw_key),
-                scopes=["signals:write", "entities:read", "entities:write", "signals:read", "query", "packs:read", "packs:admin"],
-                label="Default API Key",
-                expires_at=datetime.now(timezone.utc) + timedelta(days=730),
-            ))
+            # No email step: the tenant is active immediately. No API key is
+            # minted here — users create their own keys from the dashboard,
+            # where the full key is shown once at creation time.
             await db.commit()
             return JSONResponse(status_code=201, content=RegisterResponse(
                 tenant_id=tenant.id,
-                message="Registration complete. Your API key is shown only once.",
+                message="Registration complete. Create an API key from your dashboard.",
                 email_verification_sent=False,
                 email_verified=True,
-                api_key=raw_key,
             ).model_dump())
 
         await db.commit()
@@ -1327,33 +1312,20 @@ async def verify_email(token: str):
         if not tenant:
             return JSONResponse(status_code=404, content=error_envelope("tenant_not_found", "Tenant not found").model_dump())
 
-        show_api_key = not tenant.email_verified
-        api_key = None
-        api_key_prefix = None
+        newly_verified = not tenant.email_verified
 
-        if show_api_key:
-            raw_key = f"hm_live_{secrets.token_urlsafe(32)}"
-            api_key_hash = hash_key(raw_key)
+        if newly_verified:
+            # First-time verification activates the tenant. No API key is
+            # minted here — users create their own keys from the dashboard.
             tenant.email_verified = True
             tenant.subscription_status = "active"
-            from .db.models import ApiKey
-            from datetime import timedelta
-            api_key_row = ApiKey(
-                tenant_id=tenant.id,
-                prefix="hm_live",
-                key_hash=api_key_hash,
-                scopes=["signals:write", "entities:read", "entities:write", "signals:read", "query", "packs:read", "packs:admin"],
-                label="Default API Key",
-                expires_at=datetime.now(timezone.utc) + timedelta(days=730),
-            )
-            db.add(api_key_row)
-            api_key = raw_key
-            api_key_prefix = "hm_live"
-
-            await send_welcome_email(tenant.email, api_key_prefix)
+            await send_welcome_email(tenant.email)
 
         await db.commit()
-        return VerifyEmailResponse(verified=True, api_key=api_key, message="Email verified." if not show_api_key else "Email verified. Your API key is shown only once.").model_dump()
+        return VerifyEmailResponse(
+            verified=True,
+            message="Email verified. Create an API key from your dashboard." if newly_verified else "Email verified.",
+        ).model_dump()
 
 
 # ── Dashboard login (email + password → session token) ──────────
@@ -1441,7 +1413,6 @@ async def rotate_api_key(
     raw_key = f"hm_live_{secrets.token_urlsafe(32)}"
     api_key_hash = hash_key(raw_key)
 
-    from .db.models import ApiKey
     from datetime import timedelta
     from sqlalchemy import update
 

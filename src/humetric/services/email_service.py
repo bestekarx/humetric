@@ -45,13 +45,14 @@ async def send_verification_email(to_email: str, token: str) -> bool:
     return await send_email(to_email, subject, html_body)
 
 
-async def send_welcome_email(to_email: str, api_key_prefix: str) -> bool:
-    subject = "HuMetric — Your API Key is Ready"
+async def send_welcome_email(to_email: str) -> bool:
+    subject = "HuMetric — Welcome"
     html_body = f"""
     <h2>Email Verification Complete!</h2>
-    <p>Your API key has been created successfully. Key prefix: <code>{api_key_prefix}</code></p>
-    <p>Documentation: <a href="{HUMETRIC_BASE_URL}/docs">{HUMETRIC_BASE_URL}/docs</a></p>
+    <p>Your account is ready. Create an API key from your dashboard to start
+    making requests — the full key is shown once at creation time.</p>
     <p>Dashboard: <a href="{HUMETRIC_BASE_URL}/dashboard">{HUMETRIC_BASE_URL}/dashboard</a></p>
+    <p>Documentation: <a href="{HUMETRIC_BASE_URL}/docs">{HUMETRIC_BASE_URL}/docs</a></p>
     """
     return await send_email(to_email, subject, html_body)
 

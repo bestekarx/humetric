@@ -1,22 +1,57 @@
-let apiKey = localStorage.getItem('humetric_api_key') || '';
+let dashboardToken = localStorage.getItem('humetric_dashboard_token') || '';
 let dashboardData = null;
 
-if (apiKey) {
-    document.getElementById('api-key-input').value = apiKey;
+if (dashboardToken) {
     loadDashboard();
 }
 
-function login() {
-    apiKey = document.getElementById('api-key-input').value.trim();
-    localStorage.setItem('humetric_api_key', apiKey);
-    loadDashboard();
+async function login() {
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const msg = document.getElementById('login-message');
+    msg.textContent = '';
+    msg.className = 'message';
+    if (!email || !password) {
+        msg.textContent = 'E-posta ve sifre girin.';
+        msg.className = 'message error';
+        return;
+    }
+    try {
+        const resp = await fetch('/v1/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            msg.textContent = data.error?.message || 'Giris basarisiz';
+            msg.className = 'message error';
+            return;
+        }
+        dashboardToken = data.dashboard_token;
+        localStorage.setItem('humetric_dashboard_token', dashboardToken);
+        loadDashboard();
+    } catch (e) {
+        msg.textContent = 'Baglanti hatasi';
+        msg.className = 'message error';
+    }
+}
+
+function logout() {
+    localStorage.removeItem('humetric_dashboard_token');
+    dashboardToken = '';
+    showSection('login-card');
 }
 
 async function apiCall(path, options = {}) {
     const resp = await fetch(path, {
         ...options,
-        headers: { 'Content-Type': 'application/json', ...options.headers, Authorization: `Bearer ${apiKey}` },
+        headers: { 'Content-Type': 'application/json', ...options.headers, Authorization: `Bearer ${dashboardToken}` },
     });
+    if (resp.status === 401) {
+        logout();
+        return { error: { message: 'Oturum suresi doldu, lutfen tekrar giris yapin.' } };
+    }
     return resp.json();
 }
 

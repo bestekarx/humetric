@@ -47,6 +47,27 @@ async def get_tenant_llm_key(tenant_id: int, db) -> str:
     return tenant_key or config.ANTHROPIC_API_KEY
 
 
+def _build_tool_and_system(
+    system: str, schema: Type[T], tool_name: str, tool_description: str,
+) -> tuple[dict, object]:
+    """Build the tool definition and system parameter (with prompt caching when
+    enabled). Shared by structured_call and the batch request builder so both
+    issue byte-identical tool/system content."""
+    tool: dict = {
+        "name": tool_name,
+        "description": tool_description,
+        "input_schema": schema.model_json_schema(),
+    }
+    if config.PROMPT_CACHE_ENABLED:
+        system_param: object = [
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        ]
+        tool["cache_control"] = {"type": "ephemeral"}
+    else:
+        system_param = system
+    return tool, system_param
+
+
 async def structured_call(
     *,
     model: str,
@@ -64,18 +85,7 @@ async def structured_call(
 
     _log = logging.getLogger(__name__)
 
-    tool: dict = {
-        "name": tool_name,
-        "description": tool_description,
-        "input_schema": schema.model_json_schema(),
-    }
-    if config.PROMPT_CACHE_ENABLED:
-        system_param: object = [
-            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-        ]
-        tool["cache_control"] = {"type": "ephemeral"}
-    else:
-        system_param = system
+    tool, system_param = _build_tool_and_system(system, schema, tool_name, tool_description)
 
     t0 = time.perf_counter()
     client = _get_client(api_key=api_key)
@@ -121,3 +131,105 @@ async def structured_call(
                 call_meta["model"] = model
             return schema.model_validate(blok.input)
     raise RuntimeError(f"Model '{tool_name}' aracini cagirmadi. Yanit: {resp.content!r}")
+
+
+# ── Message Batches API (Spec 024 backfill — 50% cost) ─────────────────
+
+def build_batch_request(
+    *,
+    custom_id: str,
+    model: str,
+    system: str,
+    user: str | list[dict],
+    schema: Type[T],
+    tool_name: str,
+    tool_description: str,
+) -> dict:
+    """Build a single Message Batches request as a plain dict.
+
+    Mirrors structured_call's request shape (forced tool_use + prompt caching)
+    so a batched call produces the same structured output as the sync path.
+    The SDK accepts dict params for ``batches.create(requests=...)``.
+    """
+    tool, system_param = _build_tool_and_system(system, schema, tool_name, tool_description)
+    return {
+        "custom_id": custom_id,
+        "params": {
+            "model": model,
+            "max_tokens": config.MAX_TOKENS,
+            "system": system_param,
+            "tools": [tool],
+            "tool_choice": {"type": "tool", "name": tool_name},
+            "messages": [{"role": "user", "content": user if isinstance(user, list) else user}],
+        },
+    }
+
+
+def parse_batch_result(message, schema: Type[T], tool_name: str) -> T:
+    """Extract and validate the forced tool_use block from a batched message."""
+    for blok in message.content:
+        if blok.type == "tool_use" and blok.name == tool_name:
+            return schema.model_validate(blok.input)
+    raise RuntimeError(
+        f"Model '{tool_name}' aracini cagirmadi (batch). Yanit: {message.content!r}"
+    )
+
+
+async def submit_and_await_batch(
+    requests: list[dict],
+    *,
+    api_key: str | None = None,
+    poll_interval_s: float | None = None,
+) -> dict:
+    """Submit a Message Batch, poll until ended, and return a
+    ``{custom_id: result}`` map. Each ``result`` carries ``.type``
+    ('succeeded'/'errored'/...) and, on success, ``.message``.
+
+    Token usage is recorded post-hoc per succeeded message.
+    """
+    import asyncio
+    import logging
+
+    _log = logging.getLogger(__name__)
+
+    if not requests:
+        return {}
+
+    poll = poll_interval_s if poll_interval_s is not None else config.BATCH_POLL_INTERVAL_S
+    client = _get_client(api_key=api_key)
+
+    batch = await asyncio.to_thread(lambda: client.messages.batches.create(requests=requests))
+    _log.info("Submitted batch %s with %d request(s)", batch.id, len(requests))
+
+    while True:
+        info = await asyncio.to_thread(lambda: client.messages.batches.retrieve(batch.id))
+        if info.processing_status == "ended":
+            break
+        await asyncio.sleep(poll)
+
+    items = await asyncio.to_thread(lambda: list(client.messages.batches.results(batch.id)))
+    out: dict = {}
+    for item in items:
+        out[item.custom_id] = item.result
+    return out
+
+
+async def record_batch_usage(messages, tenant_id: int | None) -> None:
+    """Record token usage for a list of succeeded batch messages."""
+    if tenant_id is None:
+        return
+    import logging
+
+    _log = logging.getLogger(__name__)
+    total = 0
+    for msg in messages:
+        usage = getattr(msg, "usage", None)
+        if usage:
+            total += (usage.input_tokens or 0) + (usage.output_tokens or 0)
+    if total <= 0:
+        return
+    try:
+        from ..services.usage_service import record_llm_tokens
+        await record_llm_tokens(tenant_id, total)
+    except Exception:
+        _log.exception("Failed to record batch LLM tokens for tenant %d", tenant_id)

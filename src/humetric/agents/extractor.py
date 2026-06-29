@@ -12,15 +12,17 @@ if not _DEFAULT_SYSTEM:
     _DEFAULT_SYSTEM = "You are a metric extraction agent. Extract measurable metrics from signal text."
 
 
-async def extract_metrics(
+def build_extract_inputs(
     signal_text: str,
     entity_context: str = "",
     pack_prompt: str | None = None,
     pack_metrics: list[dict] | None = None,
-    tenant_id: int | None = None,
-    api_key: str | None = None,
-    call_meta: dict | None = None,
-) -> list[ExtractedMetric]:
+) -> tuple[str, str]:
+    """Build the (system, user) prompts for an extraction call.
+
+    Shared by the synchronous extractor and the batch worker so both issue an
+    identical request.
+    """
     system = pack_prompt or _DEFAULT_SYSTEM
 
     # If the pack defines metrics, force the model to use ONLY these
@@ -55,6 +57,19 @@ Important rules:
 - Include source_span: the exact phrase from the signal that supports the value.
 
 Extract metrics from the signal above."""
+    return system, user
+
+
+async def extract_metrics(
+    signal_text: str,
+    entity_context: str = "",
+    pack_prompt: str | None = None,
+    pack_metrics: list[dict] | None = None,
+    tenant_id: int | None = None,
+    api_key: str | None = None,
+    call_meta: dict | None = None,
+) -> list[ExtractedMetric]:
+    system, user = build_extract_inputs(signal_text, entity_context, pack_prompt, pack_metrics)
     result = await structured_call(
         model=config.AGENT_MODEL,
         system=system,

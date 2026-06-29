@@ -12,19 +12,61 @@ _DEFAULT_SYSTEM = _load_prompt("curator-default")
 if not _DEFAULT_SYSTEM:
     _DEFAULT_SYSTEM = "You are a metric curation agent. Compare the extracted metrics against the existing profile and validate them."
 
+# The curator fills the "action" field as free text (skip/reject/red/
+# insert/ekle/...). These actions drop a metric.
+DROP_ACTIONS = {"skip", "reject", "red", "atla", "drop", "ignore", "discard"}
 
-async def curate_metrics(
+
+def _build_type_map(pack_def: dict | None) -> dict[str, str]:
+    """metric_key -> declared type, from the pack definition."""
+    type_map: dict[str, str] = {}
+    if pack_def:
+        for m in pack_def.get("metrics", []):
+            type_map[m.get("key", "")] = m.get("type", "float")
+    return type_map
+
+
+def _finalize_metric(
+    metric_key: str,
+    value: float,
+    confidence: float,
+    needs_review: bool,
+    reasoning: str,
+    type_map: dict[str, str],
+) -> FinalMetric | None:
+    """Shared finalization: confidence-threshold filter, clamp to [-1, 1], and
+    type-mismatch penalty. Used by both the LLM curator and the cold-start
+    fast-path so their semantics never diverge. Returns None if dropped."""
+    if not needs_review and confidence < config.CONFIDENCE_THRESHOLD:
+        return None
+
+    final_value = max(-1.0, min(1.0, value))
+    final_confidence = max(0.0, min(1.0, confidence))
+
+    expected_type = type_map.get(metric_key, "float")
+    if not _type_matches(final_value, expected_type):
+        final_confidence = max(0.0, final_confidence - 0.2)
+
+    return FinalMetric(
+        metric_key=metric_key,
+        value=final_value,
+        confidence=final_confidence,
+        reasoning=reasoning,
+        needs_review=needs_review,
+    )
+
+
+def build_curate_inputs(
     extracted: list[ExtractedMetric],
     existing_metrics: list[EntityMetric],
     entity_context: str = "",
     pack_def: dict | None = None,
-    tenant_id: int | None = None,
-    api_key: str | None = None,
-    call_meta: dict | None = None,
-) -> list[FinalMetric]:
-    if not extracted:
-        return []
+) -> tuple[str, str]:
+    """Build the (system, user) prompts for a curation call.
 
+    Shared by the synchronous curator and the batch worker so both issue an
+    identical request.
+    """
     pack_prompt = None
     if pack_def and pack_def.get("prompts", {}).get("curation"):
         pack_prompt = pack_def["prompts"]["curation"]
@@ -49,29 +91,23 @@ Extracted metrics:
 {extracted_str}
 
 Decide on each extracted metric."""
+    return system, user
 
-    result = await structured_call(
-        model=config.CURATOR_MODEL,
-        system=system,
-        user=user,
-        schema=CurationResult,
-        tool_name="curate_metrics",
-        tool_description="Validate the extracted metrics and determine final values",
-        tenant_id=tenant_id,
-        api_key=api_key,
-        call_meta=call_meta,
-    )
 
-    metric_type_map: dict[str, str] = {}
-    if pack_def:
-        for m in pack_def.get("metrics", []):
-            metric_type_map[m.get("key", "")] = m.get("type", "float")
+def finalize_curation(
+    result: CurationResult,
+    extracted: list[ExtractedMetric],
+    existing_metrics: list[EntityMetric],
+    pack_def: dict | None = None,
+) -> list[FinalMetric]:
+    """Turn the LLM curator's decisions into final metrics.
 
+    Factored out so the batch worker can reuse it after parsing a batched
+    curation response.
+    """
+    type_map = _build_type_map(pack_def)
     existing_keys = {m.metric_key for m in existing_metrics}
     extracted_map = {e.metric_key: e for e in extracted}
-    # The curator fills the "action" field as free text (skip/reject/red/
-    # insert/ekle/...). Normalize the actions that drop a metric.
-    DROP_ACTIONS = {"skip", "reject", "red", "atla", "drop", "ignore", "discard"}
 
     final_metrics: list[FinalMetric] = []
     for dec in result.decisions:
@@ -85,32 +121,71 @@ Decide on each extracted metric."""
 
         if dec.action.strip().lower() in DROP_ACTIONS:
             is_new_metric = dec.metric_key not in existing_keys
-            ext = extracted_map.get(dec.metric_key)
             first_obs_conf = ext.confidence if ext else 0.0
             if not (is_new_metric and first_obs_conf >= config.CONFIDENCE_THRESHOLD):
                 continue
             src_value = ext.value
             src_confidence = ext.confidence
 
-        if not needs_review and src_confidence < config.CONFIDENCE_THRESHOLD:
-            continue
-
-        final_value = max(-1.0, min(1.0, src_value))
-        final_confidence = max(0.0, min(1.0, src_confidence))
-
-        expected_type = metric_type_map.get(dec.metric_key, "float")
-        if not _type_matches(final_value, expected_type):
-            final_confidence = max(0.0, final_confidence - 0.2)
-
-        final_metrics.append(FinalMetric(
-            metric_key=dec.metric_key,
-            value=final_value,
-            confidence=final_confidence,
-            reasoning=dec.reasoning,
-            needs_review=needs_review,
-        ))
+        fm = _finalize_metric(
+            dec.metric_key, src_value, src_confidence, needs_review, dec.reasoning, type_map,
+        )
+        if fm is not None:
+            final_metrics.append(fm)
 
     return final_metrics
+
+
+def finalize_first_observation(
+    extracted: list[ExtractedMetric],
+    pack_def: dict | None = None,
+) -> list[FinalMetric]:
+    """Cold-start fast-path: finalize extracted metrics as first observations,
+    skipping the LLM curator entirely.
+
+    On an entity with no existing metrics there is nothing to reconcile, and
+    the curator already inserts a brand-new metric whose first-observation
+    confidence clears the threshold (see ``finalize_curation``). This produces
+    the same result at zero extra LLM cost.
+    """
+    type_map = _build_type_map(pack_def)
+    final_metrics: list[FinalMetric] = []
+    for e in extracted:
+        fm = _finalize_metric(
+            e.metric_key, e.value, e.confidence, e.needs_review, e.reasoning, type_map,
+        )
+        if fm is not None:
+            final_metrics.append(fm)
+    return final_metrics
+
+
+async def curate_metrics(
+    extracted: list[ExtractedMetric],
+    existing_metrics: list[EntityMetric],
+    entity_context: str = "",
+    pack_def: dict | None = None,
+    tenant_id: int | None = None,
+    api_key: str | None = None,
+    call_meta: dict | None = None,
+) -> list[FinalMetric]:
+    if not extracted:
+        return []
+
+    system, user = build_curate_inputs(extracted, existing_metrics, entity_context, pack_def)
+
+    result = await structured_call(
+        model=config.CURATOR_MODEL,
+        system=system,
+        user=user,
+        schema=CurationResult,
+        tool_name="curate_metrics",
+        tool_description="Validate the extracted metrics and determine final values",
+        tenant_id=tenant_id,
+        api_key=api_key,
+        call_meta=call_meta,
+    )
+
+    return finalize_curation(result, extracted, existing_metrics, pack_def)
 
 
 def _type_matches(value: float, expected_type: str) -> bool:

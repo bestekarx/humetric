@@ -52,6 +52,19 @@ MAX_TOKENS = int(os.environ.get("HUMETRIC_MAX_TOKENS", "2048"))
 DECAY_LAMBDA = float(os.environ.get("HUMETRIC_DECAY_LAMBDA", str(math.log(2) / 365)))
 PROMPT_CACHE_ENABLED = os.environ.get("HUMETRIC_PROMPT_CACHE_ENABLED", "true").lower() != "false"
 
+# Cost controls (backfill). Curator fast-path: on a cold-start entity (no
+# existing metrics) the Sonnet curator is a near-deterministic pass-through,
+# so finalize the extractor output locally and skip the LLM call. Opt-in —
+# default off keeps real-time behaviour unchanged.
+CURATOR_FAST_PATH_ENABLED = (
+    os.environ.get("HUMETRIC_CURATOR_FAST_PATH_ENABLED", "false").lower() == "true"
+)
+# Batch worker: drains the signal_process queue via the Anthropic Message
+# Batches API (50% cost) for backfill. Tunables for the one-shot batch job.
+BATCH_SUBMIT_SIZE = int(os.environ.get("HUMETRIC_BATCH_SUBMIT_SIZE", "1000"))
+BATCH_POLL_INTERVAL_S = float(os.environ.get("HUMETRIC_BATCH_POLL_INTERVAL_S", "30"))
+BATCH_RECLAIM_S = float(os.environ.get("HUMETRIC_BATCH_RECLAIM_S", "3600"))
+
 API_PORT = int(os.environ.get("HUMETRIC_API_PORT", "8002"))
 
 TELEMETRY_PATH = Path(os.environ.get("HUMETRIC_TELEMETRY_PATH", str(LOGS_DIR / "agent_calls.jsonl")))

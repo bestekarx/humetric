@@ -65,16 +65,24 @@
 <body>
     <header>
         <h1>HuMetric Dashboard</h1>
-        <a href="/">Ana Sayfa</a>
+        <span>
+            <a href="/">Ana Sayfa</a>
+            <a href="#" onclick="logout();return false" style="margin-left:1rem">Cikis</a>
+        </span>
     </header>
 
     <div class="container">
         <div id="login-card" class="card">
-            <h3>API Key ile Giris Yapin</h3>
-            <div class="api-key-input">
-                <input type="password" id="api-key-input" placeholder="hm_live_...">
+            <h3>Giris Yapin</h3>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;max-width:360px">
+                <input type="email" id="login-email" placeholder="E-posta" style="padding:0.5rem;border:1px solid #ddd;border-radius:4px"
+                       onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
+                <input type="password" id="login-password" placeholder="Sifre" style="padding:0.5rem;border:1px solid #ddd;border-radius:4px"
+                       onkeydown="if(event.key==='Enter')login()">
                 <button class="btn btn-primary" onclick="login()">Giris</button>
             </div>
+            <div id="login-message" class="message" style="margin-top:0.5rem"></div>
+            <p style="margin-top:0.75rem;font-size:0.85rem;color:#666">Hesabiniz yok mu? <a href="/">Kayit olun</a></p>
         </div>
 
         <div id="loading" class="hidden">Yukleniyor...</div>

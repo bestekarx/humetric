@@ -9,9 +9,9 @@ from __future__ import annotations
 import base64
 import logging
 import os as _os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, config
@@ -637,17 +637,22 @@ class Store:
 
     @staticmethod
     async def get_next_task(
-        db: AsyncSession, batch_size: int = 5,
+        db: AsyncSession, batch_size: int = 5, task_types: list[str] | None = None,
     ) -> list[Task]:
-        """Pull tasks from the queue with SELECT ... FOR UPDATE SKIP LOCKED."""
+        """Pull tasks from the queue with SELECT ... FOR UPDATE SKIP LOCKED.
+
+        Pass ``task_types`` to claim only specific kinds (e.g. the batch worker
+        claims only ``signal_process``); default None claims any type.
+        """
         now = datetime.now(timezone.utc)
+        stmt = select(Task).where(
+            Task.status == "queued",
+            (Task.next_retry_at.is_(None)) | (Task.next_retry_at <= now),
+        )
+        if task_types:
+            stmt = stmt.where(Task.task_type.in_(task_types))
         result = await db.execute(
-            select(Task)
-            .where(
-                Task.status == "queued",
-                (Task.next_retry_at.is_(None)) | (Task.next_retry_at <= now),
-            )
-            .order_by(Task.created_at.asc())
+            stmt.order_by(Task.created_at.asc())
             .limit(batch_size)
             .with_for_update(skip_locked=True)
         )
@@ -657,6 +662,23 @@ class Store:
             t.started_at = now
         await db.commit()
         return tasks
+
+    @staticmethod
+    async def reclaim_stale_tasks(db: AsyncSession, older_than_s: float) -> int:
+        """Requeue tasks stuck in 'processing' longer than ``older_than_s``.
+
+        A batch worker that crashes mid-batch leaves its claimed tasks in
+        'processing'. This returns them to 'queued' so a later run picks them
+        up. Returns the number reclaimed.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=older_than_s)
+        result = await db.execute(
+            update(Task)
+            .where(Task.status == "processing", Task.started_at < cutoff)
+            .values(status="queued", started_at=None)
+        )
+        await db.commit()
+        return result.rowcount or 0
 
     @staticmethod
     async def complete_task(db: AsyncSession, task_id: int) -> None:

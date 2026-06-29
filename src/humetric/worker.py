@@ -35,7 +35,7 @@ signal.signal(signal.SIGINT, _handle_shutdown)
 
 
 async def process_signal_task(db: AsyncSession, task) -> None:
-    """Process a single signal task: extract → curate → write → embed."""
+    """Process a single signal task: extract → curate (or fast-path) → write → embed."""
     payload = task.payload
     entity_id = payload.get("entity_id")
     text = payload.get("text", "")
@@ -71,14 +71,43 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         call_meta=extract_meta,
     )
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
+
     curator_meta: dict = {}
-    final_metrics = await curator.curate_metrics(
-        extracted, existing_metrics, ctx, pack_def,
-        tenant_id=task.tenant_id,
-        api_key=llm_key,
-        call_meta=curator_meta,
+    if config.CURATOR_FAST_PATH_ENABLED and not existing_metrics:
+        # Cold-start fast-path: with no history to reconcile, the Sonnet curator
+        # is a near-deterministic pass-through. Finalize locally and skip the
+        # LLM call. curator_meta stays empty → trace records curator_model=None
+        # so the fast-path remains auditable.
+        final_metrics = curator.finalize_first_observation(extracted, pack_def)
+    else:
+        final_metrics = await curator.curate_metrics(
+            extracted, existing_metrics, ctx, pack_def,
+            tenant_id=task.tenant_id,
+            api_key=llm_key,
+            call_meta=curator_meta,
+        )
+
+    await _persist_signal_result(
+        db, task, entity, extracted, final_metrics,
+        extract_meta, curator_meta, existing_metrics, pack_def, input_hash,
     )
 
+
+async def _persist_signal_result(
+    db: AsyncSession,
+    task,
+    entity,
+    extracted,
+    final_metrics,
+    extract_meta: dict,
+    curator_meta: dict,
+    existing_metrics,
+    pack_def: dict,
+    input_hash: str,
+) -> None:
+    """Write final metrics (KVKK-gated), re-embed the entity, and mark the
+    signal completed. Shared by the real-time worker and the batch worker."""
+    entity_id = entity.id
     skipped_sensitive: list[str] = []
 
     for fm in final_metrics:
