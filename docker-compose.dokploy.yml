@@ -40,7 +40,12 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
-      DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-humetric}
+      # TEMP (beta launch): humetric_app cutover deferred — app runs on the
+      # owner connection so no APP_DB_PASSWORD rotation is required to go live.
+      # To finish the cutover: rotate the humetric_app role password + set
+      # APP_DB_PASSWORD in Dokploy, then restore the humetric_app line:
+      #   DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-humetric}
+      DATABASE_URL_APP: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
@@ -72,7 +77,8 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
-      DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-humetric}
+      # TEMP (beta launch): humetric_app cutover deferred — see api service above.
+      DATABASE_URL_APP: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
