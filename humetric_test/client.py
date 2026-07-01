@@ -80,6 +80,11 @@ class HuMetricClient:
         return self._request("GET", "/verify-email", "GET /v1/verify-email",
                              params={"token": token}, auth=False, expected_status=200)
 
+    def login(self, email: str, password: str) -> StepResult:
+        return self._request("POST", "/login", "POST /v1/login",
+                             body={"email": email, "password": password},
+                             auth=False, expected_status=200)
+
     # --- API Keys ---
 
     def create_api_key(self, prefix: str, label: str, scopes: list[str]) -> StepResult:
@@ -173,10 +178,30 @@ class HuMetricClient:
         return self._request("POST", "/query", "POST /v1/query",
                              body=body, expected_status=200)
 
+    def query_free_text(self, free_text_query: str, entity_type: str | None = None,
+                        top_k: int = 5, include_reasoning: bool = False) -> StepResult:
+        body: dict[str, Any] = {
+            "free_text_query": free_text_query,
+            "top_k": top_k,
+            "include_reasoning": include_reasoning,
+        }
+        if entity_type:
+            body["entity_type"] = entity_type
+        return self._request("POST", "/query", "POST /v1/query",
+                             body=body, expected_status=200)
+
     # --- Tenant ---
 
     def tenant_keys(self) -> StepResult:
         return self._request("GET", "/tenant/keys", "GET /v1/tenant/keys", expected_status=200)
+
+    def put_tenant_keys(self, payload: dict, expected_status: int = 200) -> StepResult:
+        return self._request("PUT", "/tenant/keys", "PUT /v1/tenant/keys",
+                             body=payload, expected_status=expected_status)
+
+    def delete_tenant_keys(self, expected_status: int = 200) -> StepResult:
+        return self._request("DELETE", "/tenant/keys", "DELETE /v1/tenant/keys",
+                             expected_status=expected_status)
 
     def tenant_dashboard(self) -> StepResult:
         return self._request("GET", "/tenant/dashboard", "GET /v1/tenant/dashboard",

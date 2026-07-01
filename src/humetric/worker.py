@@ -45,10 +45,10 @@ async def process_signal_task(db: AsyncSession, task) -> None:
     if not entity:
         raise ValueError(f"Entity not found: {entity_id}")
 
-    from .agents.base import get_tenant_llm_key
+    from .agents.base import get_tenant_llm_config
     from .agents.versioning import hash_text
 
-    llm_key = await get_tenant_llm_key(task.tenant_id, db)
+    llm_provider, llm_key = await get_tenant_llm_config(task.tenant_id, db)
 
     signal_text = text or json.dumps(payload.get("structured", {}), sort_keys=True, ensure_ascii=False)
     input_hash = hash_text(signal_text)
@@ -68,6 +68,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         pack_metrics=pack_metrics,
         tenant_id=task.tenant_id,
         api_key=llm_key,
+        provider=llm_provider,
         call_meta=extract_meta,
     )
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
@@ -84,6 +85,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
             extracted, existing_metrics, ctx, pack_def,
             tenant_id=task.tenant_id,
             api_key=llm_key,
+            provider=llm_provider,
             call_meta=curator_meta,
         )
 

@@ -36,6 +36,16 @@ dev = [
     "rich>=13.7",
     "asgi-lifespan>=2.1",
 ]
+byok-openai = [
+    "openai>=1.40",
+]
+byok-google = [
+    "google-generativeai>=0.8",
+]
+byok-all = [
+    "openai>=1.40",
+    "google-generativeai>=0.8",
+]
 analytics = [
     "pyarrow>=15",
     "duckdb>=1.0",

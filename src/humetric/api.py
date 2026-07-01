@@ -98,7 +98,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.CORS_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -937,10 +937,10 @@ async def create_pack_wizard(
 ):
     _require_scope(request, "packs:admin")
     from .agents.wizard import generate_pack_yaml
-    from .agents.base import get_tenant_llm_key
+    from .agents.base import get_tenant_llm_config
 
     try:
-        llm_key = await get_tenant_llm_key(request.state.tenant_id, db)
+        _llm_provider, llm_key = await get_tenant_llm_config(request.state.tenant_id, db)
         result = await generate_pack_yaml(
             body.text, body.entity_type_hint,
             tenant_id=request.state.tenant_id,
@@ -1126,8 +1126,8 @@ async def query_entities(
         top_k=max(top_k * 3, 20),
     )
 
-    from .agents.base import get_tenant_llm_key
-    llm_key = await get_tenant_llm_key(tenant_id, db)
+    from .agents.base import get_tenant_llm_config
+    llm_provider, llm_key = await get_tenant_llm_config(tenant_id, db)
     ranked = await ranker.rank_entities(
         candidates,
         query=body.free_text_query or body.rank_by or "",
@@ -1136,6 +1136,7 @@ async def query_entities(
         top_k=top_k,
         tenant_id=tenant_id,
         api_key=llm_key,
+        provider=llm_provider,
     )
 
     results = []
@@ -1216,7 +1217,14 @@ async def upsert_tenant_keys(
 ):
     tenant_id = request.state.tenant_id
     try:
-        keys = await Store.upsert_tenant_keys(db, tenant_id, {"anthropic_key": body.anthropic_key, "voyage_key": body.voyage_key})
+        keys = await Store.upsert_tenant_keys(db, tenant_id, {
+            "anthropic_key": body.anthropic_key,
+            "voyage_key": body.voyage_key,
+            "openai_key": body.openai_key,
+            "google_ai_key": body.google_ai_key,
+            "deepseek_key": body.deepseek_key,
+            "llm_provider": body.llm_provider,
+        })
     except RuntimeError:
         return JSONResponse(
             status_code=501,
@@ -1605,10 +1613,14 @@ async def list_pending_reviews(
 
 # ── Middleware chain ───────────────────────────────────────────
 
+# Starlette executes middleware in the reverse of registration order (each
+# add_middleware() call wraps the previous stack). Auth must run first so
+# request.state.tenant_id exists before RateLimit/BillingGuard read it —
+# registering Auth last here is what makes it execute first.
 app.add_middleware(PrometheusMiddleware)
-app.add_middleware(AuthMiddleware)
 app.add_middleware(BillingGuardMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(AuthMiddleware)
 
 
 # ── Prometheus /metrics endpoint (auth atlanir) ────────────────

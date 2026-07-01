@@ -47,6 +47,45 @@ async def get_tenant_llm_key(tenant_id: int, db) -> str:
     return tenant_key or config.ANTHROPIC_API_KEY
 
 
+async def get_tenant_llm_config(tenant_id: int, db) -> tuple[str, str | None]:
+    """Return (provider, api_key) for the tenant's active LLM provider.
+
+    Falls back to the platform Anthropic key when the tenant hasn't configured
+    a BYO key for the selected provider.
+    """
+    from ..store import Store
+    try:
+        keys_dict = await Store.get_tenant_keys(db, tenant_id)
+    except Exception:
+        return "anthropic", config.ANTHROPIC_API_KEY
+
+    provider = keys_dict.get("llm_provider") or "anthropic"
+
+    # Safety net: a disabled/corrupt provider value in the DB must never break
+    # the pipeline. Fall back to anthropic (platform key) — the beta lock keeps
+    # only anthropic enabled, so this covers stale non-anthropic rows.
+    if provider not in config.ENABLED_LLM_PROVIDERS:
+        provider = "anthropic"
+
+    provider_to_store_key = {
+        "anthropic": "anthropic",
+        "openai": "openai",
+        "google": "google",
+        "deepseek": "deepseek",
+    }
+    store_key = provider_to_store_key.get(provider, "anthropic")
+
+    try:
+        api_key = await Store.decrypt_tenant_key(db, tenant_id, store_key)
+    except Exception:
+        api_key = None
+
+    if not api_key and provider == "anthropic":
+        api_key = config.ANTHROPIC_API_KEY
+
+    return provider, api_key
+
+
 def _build_tool_and_system(
     system: str, schema: Type[T], tool_name: str, tool_description: str,
 ) -> tuple[dict, object]:

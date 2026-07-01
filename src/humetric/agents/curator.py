@@ -6,7 +6,7 @@ from .. import config
 from ..schema import CurationResult, ExtractedMetric, FinalMetric
 from ..db.models import EntityMetric
 from . import _load_prompt
-from .base import structured_call
+from .multi_llm import structured_call_multi
 
 _DEFAULT_SYSTEM = _load_prompt("curator-default")
 if not _DEFAULT_SYSTEM:
@@ -166,22 +166,26 @@ async def curate_metrics(
     pack_def: dict | None = None,
     tenant_id: int | None = None,
     api_key: str | None = None,
+    provider: str | None = None,
     call_meta: dict | None = None,
 ) -> list[FinalMetric]:
     if not extracted:
         return []
 
     system, user = build_curate_inputs(extracted, existing_metrics, entity_context, pack_def)
+    resolved_provider = provider or "anthropic"
+    model = config.get_curator_model(resolved_provider)
 
-    result = await structured_call(
-        model=config.CURATOR_MODEL,
+    result = await structured_call_multi(
+        provider=resolved_provider,
+        model=model,
+        api_key=api_key,
         system=system,
         user=user,
         schema=CurationResult,
         tool_name="curate_metrics",
         tool_description="Validate the extracted metrics and determine final values",
         tenant_id=tenant_id,
-        api_key=api_key,
         call_meta=call_meta,
     )
 

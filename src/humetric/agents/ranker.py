@@ -6,7 +6,7 @@ from .. import config
 from ..schema import RankedResult, RankingResult
 from ..db.models import Entity
 from . import _load_prompt
-from .base import structured_call
+from .multi_llm import structured_call_multi
 
 _DEFAULT_SYSTEM = _load_prompt("ranker-default")
 if not _DEFAULT_SYSTEM:
@@ -21,6 +21,7 @@ async def rank_entities(
     top_k: int = 10,
     tenant_id: int | None = None,
     api_key: str | None = None,
+    provider: str | None = None,
 ) -> list[RankedResult]:
     if not entities:
         return []
@@ -44,15 +45,18 @@ Entity listesi:
 
 En ilgili {min(top_k, len(entities))} entity'yi sirala."""
 
-    result = await structured_call(
-        model=config.CURATOR_MODEL,
+    resolved_provider = provider or "anthropic"
+    model = config.get_ranker_model(resolved_provider)
+    result = await structured_call_multi(
+        provider=resolved_provider,
+        model=model,
+        api_key=api_key,
         system=_DEFAULT_SYSTEM,
         user=user,
         schema=RankingResult,
         tool_name="rank_entities",
         tool_description="Score and rank entities against the query",
         tenant_id=tenant_id,
-        api_key=api_key,
     )
 
     ranked: list[RankedResult] = []

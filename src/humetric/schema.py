@@ -9,7 +9,9 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+from . import config
 
 
 # ── Enums ─────────────────────────────────────────────────────
@@ -503,13 +505,17 @@ class RankingResult(BaseModel):
     results: list[RankedResultLLM] = Field(default_factory=list)
 
 
-# ── Tenant Keys (Spec 025) ──────────────────────────────────────
+# ── Tenant Keys (Spec 025 + multi-provider BYOK) ───────────────
 
 class TenantKeysRead(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     has_anthropic_key: bool
     has_voyage_key: bool
+    has_openai_key: bool = False
+    has_google_ai_key: bool = False
+    has_deepseek_key: bool = False
+    llm_provider: str = "anthropic"
     updated_at: datetime | None = None
 
 
@@ -518,6 +524,20 @@ class TenantKeysUpdate(BaseModel):
 
     anthropic_key: str | None = Field(default=None, max_length=512, description="Plaintext Anthropic API key")
     voyage_key: str | None = Field(default=None, max_length=512, description="Plaintext Voyage API key")
+    openai_key: str | None = Field(default=None, max_length=512, description="Plaintext OpenAI API key")
+    google_ai_key: str | None = Field(default=None, max_length=512, description="Plaintext Google AI API key")
+    deepseek_key: str | None = Field(default=None, max_length=512, description="Plaintext DeepSeek API key")
+    llm_provider: str | None = Field(default=None, max_length=64, description="Active LLM provider: anthropic | openai | google | deepseek")
+
+    @field_validator("llm_provider")
+    @classmethod
+    def _validate_llm_provider(cls, v: str | None) -> str | None:
+        if v is not None and v not in config.ENABLED_LLM_PROVIDERS:
+            raise ValueError(
+                f"Unsupported or disabled LLM provider: '{v}'. "
+                f"Enabled providers: {', '.join(config.ENABLED_LLM_PROVIDERS)}"
+            )
+        return v
 
 
 # ── Registration (Spec 026) ──────────────────────────────────────

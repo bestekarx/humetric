@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 import uuid
 
@@ -9,19 +10,29 @@ from .scenarios.lastik_bayi import build_lastik_bayi_scenario
 from .scenarios.saha_isci import build_saha_isci_scenario
 from .scenarios.ilac_mumessili import build_ilac_mumessili_scenario
 from .scenarios.edge_cases import build_edge_cases_scenario
+from .scenarios.beta_smoke import build_beta_smoke_scenario
+
+DEFAULT_BASE_URL = os.environ.get("HUMETRIC_TEST_BASE_URL", "http://localhost:8002/v1")
 
 SCENARIOS = {
     "lastik_bayi": ("Lastik Dagitim Bayisi", build_lastik_bayi_scenario),
     "saha_isci": ("Saha Hizmet Iscisi", build_saha_isci_scenario),
     "ilac_mumessili": ("Ilac Pazarlama Mumessili", build_ilac_mumessili_scenario),
     "edge_cases": ("Edge Case Testleri", build_edge_cases_scenario),
+    "beta_smoke": ("Beta Smoke (uctan uca)", build_beta_smoke_scenario),
 }
+
+# Self-contained scenarios drive their own register/login/api-key flow, so the
+# shared register + full-scope-key preamble is skipped for them.
+STANDALONE_SCENARIOS = {"beta_smoke"}
 
 
 def main():
     parser = argparse.ArgumentParser(description="HuMetric API Test Harness")
     parser.add_argument("--scenario", type=str, default=None,
-                        help="Belirli bir senaryoyu calistir (register, lastik_bayi, saha_isci, ilac_mumessili, edge_cases)")
+                        help="Belirli bir senaryoyu calistir (register, lastik_bayi, saha_isci, ilac_mumessili, edge_cases, beta_smoke)")
+    parser.add_argument("--base-url", type=str, default=DEFAULT_BASE_URL,
+                        help=f"API taban URL'i (varsayilan: {DEFAULT_BASE_URL})")
     parser.add_argument("--verbose", action="store_true", help="Detayli cikti")
     args = parser.parse_args()
 
@@ -30,12 +41,32 @@ def main():
         print(f"HATA: Bilinmeyen senaryo '{args.scenario}'. Kullanilabilir: {', '.join(valid_scenarios)}")
         sys.exit(1)
 
-    client = HuMetricClient()
+    client = HuMetricClient(base_url=args.base_url)
     runner = ScenarioRunner(client, verbose=args.verbose)
 
     print("=== HuMetric Test Harness ===")
-    print("API: http://localhost:8002")
+    print(f"API: {args.base_url}")
     print()
+
+    # Standalone scenarios manage their own tenant lifecycle end-to-end.
+    if args.scenario in STANDALONE_SCENARIOS:
+        label, builder = SCENARIOS[args.scenario]
+        print(f"[Senaryo: {args.scenario}] {label}")
+        logger = ScenarioLogger(args.scenario)
+        try:
+            builder(runner, client, logger)
+        except Exception as exc:
+            print(f"  X Senaryo hatasi: {exc}")
+            logger.add_failed(f"scenario:{args.scenario}", "", "", message=str(exc))
+        s = logger.summary
+        print(f"  Ozet: {s['passed']} passed, {s['failed']} failed, {s['skipped']} skipped")
+        report_path = logger.flush()
+        summary_path = ScenarioLogger.generate_summary([s])
+        print("\n" + "-" * 40)
+        print(f"Loglar: {report_path}")
+        print(f"Ozet: {summary_path}")
+        client.close()
+        sys.exit(0 if s["failed"] == 0 else 1)
 
     test_email = f"test-{uuid.uuid4().hex[:8]}@humetric.local"
     test_password = "Test1234!Test"

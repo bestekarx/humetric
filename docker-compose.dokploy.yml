@@ -40,13 +40,18 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
-      DATABASE_URL_APP: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
+      DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-humetric}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
       HUMETRIC_ENCRYPTION_KEY: ${HUMETRIC_ENCRYPTION_KEY:-}
       HUMETRIC_REQUIRE_EMAIL_VERIFICATION: "false"
       HUMETRIC_BASE_URL: https://api.gethumetric.com
+      HUMETRIC_ENFORCE_TIER_LIMITS: "true"
+      HUMETRIC_FREE_TIER_SIGNAL_LIMIT: ${HUMETRIC_FREE_TIER_SIGNAL_LIMIT:-1000}
+      HUMETRIC_FREE_TIER_ENTITY_LIMIT: ${HUMETRIC_FREE_TIER_ENTITY_LIMIT:-10}
+      HUMETRIC_FREE_TIER_PACK_LIMIT: ${HUMETRIC_FREE_TIER_PACK_LIMIT:-1}
+      HUMETRIC_CORS_ALLOWED_ORIGINS: ${HUMETRIC_CORS_ALLOWED_ORIGINS:-https://gethumetric.com,https://www.gethumetric.com}
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
@@ -67,7 +72,7 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
-      DATABASE_URL_APP: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
+      DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-humetric}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}

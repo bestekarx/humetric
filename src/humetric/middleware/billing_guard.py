@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -58,32 +59,37 @@ class BillingGuardMiddleware(BaseHTTPMiddleware):
 
         factory = get_async_session_factory()
         async with factory() as db:
-            tenant = await db.get(Tenant, tenant_id)
-            if not tenant or tenant.tier != "free":
-                return await call_next(request)
-
-            # Full BYOK tenants bear their own LLM + embedding costs, so the
-            # free-tier quota (which exists to cap the platform's spend) does
-            # not apply to them.
-            if tenant.anthropic_key_encrypted and tenant.voyage_key_encrypted:
-                return await call_next(request)
-
-            metric_key, limit = limit_info
-
-            current_value = await self._get_current_usage(db, tenant_id, metric_key)
-            if current_value >= limit:
-                _log.warning(
-                    "Tier limit exceeded: tenant=%d metric=%s current=%d limit=%d",
-                    tenant_id, metric_key, current_value, limit,
+            try:
+                # RLS-scoped queries below (Entity/MetricPack/MeteringRecord)
+                # require app.tenant_id set on this connection, same as
+                # get_tenant_db() does for regular request handlers.
+                await db.execute(
+                    text("SELECT set_config('app.tenant_id', :t, false)"),
+                    {"t": str(tenant_id)},
                 )
-                return JSONResponse(
-                    status_code=402,
-                    content=TierLimitExceededResponse(
-                        message=f"Free tier limit exceeded ({metric_key}: {current_value}/{limit}). Upgrade at /v1/billing/checkout.",
-                        upgrade_url="/v1/billing/checkout?tier=pro",
-                        current_usage={metric_key: current_value},
-                    ).model_dump(),
-                )
+
+                tenant = await db.get(Tenant, tenant_id)
+                if not tenant or tenant.tier != "free":
+                    return await call_next(request)
+
+                metric_key, limit = limit_info
+
+                current_value = await self._get_current_usage(db, tenant_id, metric_key)
+                if current_value >= limit:
+                    _log.warning(
+                        "Tier limit exceeded: tenant=%d metric=%s current=%d limit=%d",
+                        tenant_id, metric_key, current_value, limit,
+                    )
+                    return JSONResponse(
+                        status_code=402,
+                        content=TierLimitExceededResponse(
+                            message=f"Free tier limit exceeded ({metric_key}: {current_value}/{limit}). Upgrade at /v1/billing/checkout.",
+                            upgrade_url="/v1/billing/checkout?tier=pro",
+                            current_usage={metric_key: current_value},
+                        ).model_dump(),
+                    )
+            finally:
+                await db.execute(text("SELECT set_config('app.tenant_id', '', false)"))
 
         return await call_next(request)
 

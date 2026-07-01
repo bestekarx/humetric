@@ -42,6 +42,56 @@ MATCHMAKER_MODEL = os.environ.get("HUMETRIC_MATCHMAKER_MODEL", "claude-sonnet-4-
 CURATOR_MODEL = os.environ.get("HUMETRIC_CURATOR_MODEL", "claude-sonnet-4-6")
 WIZARD_MODEL = os.environ.get("HUMETRIC_WIZARD_MODEL", "claude-haiku-4-5-20251001")
 
+# Per-provider model defaults (BYOK multi-provider)
+OPENAI_AGENT_MODEL = os.environ.get("HUMETRIC_OPENAI_AGENT_MODEL", "gpt-4o-mini")
+OPENAI_CURATOR_MODEL = os.environ.get("HUMETRIC_OPENAI_CURATOR_MODEL", "gpt-4o")
+OPENAI_RANKER_MODEL = os.environ.get("HUMETRIC_OPENAI_RANKER_MODEL", "gpt-4o")
+GOOGLE_AGENT_MODEL = os.environ.get("HUMETRIC_GOOGLE_AGENT_MODEL", "gemini-1.5-flash")
+GOOGLE_CURATOR_MODEL = os.environ.get("HUMETRIC_GOOGLE_CURATOR_MODEL", "gemini-1.5-pro")
+GOOGLE_RANKER_MODEL = os.environ.get("HUMETRIC_GOOGLE_RANKER_MODEL", "gemini-1.5-pro")
+DEEPSEEK_AGENT_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_AGENT_MODEL", "deepseek-chat")
+DEEPSEEK_CURATOR_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_CURATOR_MODEL", "deepseek-chat")
+DEEPSEEK_RANKER_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_RANKER_MODEL", "deepseek-chat")
+
+# BYOK: beta'da yalnizca anthropic acik; virgullu listeyle genisletilir.
+# Ileride 4 saglayiciyi acmak tek env degiskeni:
+# HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic,openai,google,deepseek
+ENABLED_LLM_PROVIDERS = [
+    p.strip()
+    for p in os.environ.get("HUMETRIC_ENABLED_LLM_PROVIDERS", "anthropic").split(",")
+    if p.strip()
+]
+
+
+def get_extractor_model(provider: str) -> str:
+    if provider == "openai":
+        return OPENAI_AGENT_MODEL
+    if provider == "google":
+        return GOOGLE_AGENT_MODEL
+    if provider == "deepseek":
+        return DEEPSEEK_AGENT_MODEL
+    return AGENT_MODEL
+
+
+def get_curator_model(provider: str) -> str:
+    if provider == "openai":
+        return OPENAI_CURATOR_MODEL
+    if provider == "google":
+        return GOOGLE_CURATOR_MODEL
+    if provider == "deepseek":
+        return DEEPSEEK_CURATOR_MODEL
+    return CURATOR_MODEL
+
+
+def get_ranker_model(provider: str) -> str:
+    if provider == "openai":
+        return OPENAI_RANKER_MODEL
+    if provider == "google":
+        return GOOGLE_RANKER_MODEL
+    if provider == "deepseek":
+        return DEEPSEEK_RANKER_MODEL
+    return MATCHMAKER_MODEL
+
 TOP_K = int(os.environ.get("HUMETRIC_TOP_K", "10"))
 RETRIEVE_K = int(os.environ.get("HUMETRIC_RETRIEVE_K", "50"))
 LLM_K = int(os.environ.get("HUMETRIC_LLM_K", "20"))
@@ -99,6 +149,14 @@ CAPTCHA_SECRET_KEY = os.environ.get("CAPTCHA_SECRET_KEY", "")
 
 # HuMetric base URL (Spec 026)
 HUMETRIC_BASE_URL = os.environ.get("HUMETRIC_BASE_URL", "http://localhost:8002")
+
+# CORS: comma-separated allowed origins. Defaults to "*" for local dev; set to
+# the dashboard origin(s) in production to prevent cross-origin credential use.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("HUMETRIC_CORS_ALLOWED_ORIGINS", "*").split(",")
+    if origin.strip()
+]
 
 # MCP (Spec 026)
 HUMETRIC_MCP_API_KEY = os.environ.get("HUMETRIC_MCP_API_KEY", "")

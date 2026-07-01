@@ -783,15 +783,36 @@ class Store:
     # --- BYO-Key (Spec 025) ---
 
     @staticmethod
-    async def get_tenant_keys(db: AsyncSession, tenant_id: int) -> dict:
-        tenant = await Store.get_tenant_by_id(db, tenant_id)
-        if not tenant:
-            return {"has_anthropic_key": False, "has_voyage_key": False, "updated_at": None}
+    def _keys_dict(tenant) -> dict:
+        """Build the canonical keys status dict from a Tenant row."""
         return {
             "has_anthropic_key": bool(tenant.anthropic_key_encrypted),
             "has_voyage_key": bool(tenant.voyage_key_encrypted),
+            "has_openai_key": bool(tenant.openai_key_encrypted),
+            "has_google_ai_key": bool(tenant.google_ai_key_encrypted),
+            "has_deepseek_key": bool(tenant.deepseek_key_encrypted),
+            "llm_provider": tenant.llm_provider or "anthropic",
             "updated_at": tenant.updated_at,
         }
+
+    @staticmethod
+    def _empty_keys_dict() -> dict:
+        return {
+            "has_anthropic_key": False,
+            "has_voyage_key": False,
+            "has_openai_key": False,
+            "has_google_ai_key": False,
+            "has_deepseek_key": False,
+            "llm_provider": "anthropic",
+            "updated_at": None,
+        }
+
+    @staticmethod
+    async def get_tenant_keys(db: AsyncSession, tenant_id: int) -> dict:
+        tenant = await Store.get_tenant_by_id(db, tenant_id)
+        if not tenant:
+            return Store._empty_keys_dict()
+        return Store._keys_dict(tenant)
 
     @staticmethod
     async def upsert_tenant_keys(
@@ -799,31 +820,42 @@ class Store:
     ) -> dict:
         tenant = await Store.get_tenant_by_id(db, tenant_id)
         if not tenant:
-            return {"has_anthropic_key": False, "has_voyage_key": False, "updated_at": None}
+            return Store._empty_keys_dict()
         if data.get("anthropic_key") is not None:
             tenant.anthropic_key_encrypted = encrypt_key(data["anthropic_key"])
         if data.get("voyage_key") is not None:
             tenant.voyage_key_encrypted = encrypt_key(data["voyage_key"])
+        if data.get("openai_key") is not None:
+            tenant.openai_key_encrypted = encrypt_key(data["openai_key"])
+        if data.get("google_ai_key") is not None:
+            tenant.google_ai_key_encrypted = encrypt_key(data["google_ai_key"])
+        if data.get("deepseek_key") is not None:
+            tenant.deepseek_key_encrypted = encrypt_key(data["deepseek_key"])
+        if data.get("llm_provider") is not None:
+            tenant.llm_provider = data["llm_provider"]
         tenant.updated_at = datetime.now(timezone.utc)
         db.add(tenant)
         await db.commit()
-        return {
-            "has_anthropic_key": bool(tenant.anthropic_key_encrypted),
-            "has_voyage_key": bool(tenant.voyage_key_encrypted),
-            "updated_at": tenant.updated_at,
-        }
+        return Store._keys_dict(tenant)
 
     @staticmethod
     async def delete_tenant_keys(db: AsyncSession, tenant_id: int) -> dict:
         tenant = await Store.get_tenant_by_id(db, tenant_id)
         if not tenant:
-            return {"has_anthropic_key": False, "has_voyage_key": False, "updated_at": None}
+            return Store._empty_keys_dict()
         tenant.anthropic_key_encrypted = None
         tenant.voyage_key_encrypted = None
-        tenant.updated_at = None
+        tenant.openai_key_encrypted = None
+        tenant.google_ai_key_encrypted = None
+        tenant.deepseek_key_encrypted = None
+        # Reset provider so a tenant that removed BYO keys never gets locked out:
+        # anthropic falls back to the platform key. Keeping a non-anthropic
+        # provider here would leave the pipeline keyless and failing.
+        tenant.llm_provider = "anthropic"
+        tenant.updated_at = datetime.now(timezone.utc)
         db.add(tenant)
         await db.commit()
-        return {"has_anthropic_key": False, "has_voyage_key": False, "updated_at": None}
+        return Store._empty_keys_dict()
 
     @staticmethod
     async def decrypt_tenant_key(
@@ -832,10 +864,15 @@ class Store:
         tenant = await Store.get_tenant_by_id(db, tenant_id)
         if not tenant:
             return None
-        encrypted = (
-            tenant.anthropic_key_encrypted if key_type == "anthropic"
-            else tenant.voyage_key_encrypted
-        )
+        col_map = {
+            "anthropic": "anthropic_key_encrypted",
+            "voyage": "voyage_key_encrypted",
+            "openai": "openai_key_encrypted",
+            "google": "google_ai_key_encrypted",
+            "deepseek": "deepseek_key_encrypted",
+        }
+        attr = col_map.get(key_type, "anthropic_key_encrypted")
+        encrypted = getattr(tenant, attr, None)
         if not encrypted:
             return None
         return decrypt_key(encrypted)

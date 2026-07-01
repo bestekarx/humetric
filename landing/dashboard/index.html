@@ -14,6 +14,20 @@
         .card h3 { margin-bottom: 1rem; font-size: 1.1rem; color: #1a1a2e; }
         .api-key-input { display: flex; gap: 0.5rem; }
         .api-key-input input { flex: 1; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; }
+
+        /* BYOK provider card */
+        .byok-provider-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; margin-bottom: 1rem; }
+        .byok-provider-row select { padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.875rem; background: white; cursor: pointer; min-width: 160px; }
+        .byok-key-row { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.75rem; }
+        .byok-key-row input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 0.875rem; }
+        .byok-key-row input:focus { outline: none; border-color: #e94560; }
+        .provider-status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
+        .provider-status-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; padding: 0.4rem 0.6rem; background: #f8f9fa; border-radius: 4px; }
+        .provider-status-item .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .dot-active { background: #2e7d32; }
+        .dot-inactive { background: #ccc; }
+        .active-badge { font-size: 0.65rem; font-weight: 700; background: #e94560; color: white; border-radius: 3px; padding: 0.1rem 0.3rem; margin-left: auto; }
+        .byok-description { font-size: 0.8rem; color: #666; margin-bottom: 1rem; line-height: 1.5; }
         .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.875rem; }
         .btn-primary { background: #e94560; color: white; }
         .btn-outline { background: white; border: 1px solid #ddd; }
@@ -151,6 +165,41 @@
                         <div class="value" id="limit-packs">-</div>
                         <div class="label">Pack</div>
                     </div>
+                </div>
+            </div>
+
+            <!-- BYOK — Bring Your Own Key -->
+            <div class="card" id="byok-card">
+                <h3>Kendi API Anahtarlarinizi Kullanin (BYOK)</h3>
+                <p class="byok-description">
+                    Kendi LLM API anahtarlarinizi kullanarak maliyetleri dogrudan hesabinizdan yonetin.
+                    Aktif saglayiciyi secin, anahtari girin ve kaydedin.
+                </p>
+
+                <div id="byok-status-grid" class="provider-status-grid"></div>
+
+                <div class="byok-provider-row">
+                    <div>
+                        <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:0.3rem;color:#444">Aktif LLM Saglayici</label>
+                        <select id="byok-provider-select" onchange="onProviderChange()">
+                            <option value="anthropic">Anthropic (Claude)</option>
+                            <option value="openai" disabled>OpenAI (GPT) (yakinda)</option>
+                            <option value="google" disabled>Google AI (Gemini) (yakinda)</option>
+                            <option value="deepseek" disabled>DeepSeek (yakinda)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="byok-key-row">
+                    <input type="password" id="byok-api-key" placeholder="API anahtarinizi girin..." autocomplete="new-password">
+                    <button class="btn btn-primary" onclick="saveByokKey()">Kaydet</button>
+                </div>
+
+                <div id="byok-provider-hint" style="font-size:0.75rem;color:#888;margin-bottom:0.5rem"></div>
+                <p id="byok-message" class="message"></p>
+
+                <div style="margin-top:0.75rem;border-top:1px solid #f0f0f0;padding-top:0.75rem">
+                    <button class="btn btn-danger btn-sm" onclick="deleteAllByokKeys()">Tum Anahtarlari Sil</button>
                 </div>
             </div>
 

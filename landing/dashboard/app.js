@@ -67,6 +67,7 @@ async function loadDashboard() {
         renderDashboard();
         showSection('dashboard');
         loadApiKeys();
+        loadByokStatus();
     } catch (e) {
         document.getElementById('error').textContent = 'API baglanti hatasi';
         showSection('error');
@@ -242,6 +243,164 @@ function copyNewKey() {
         btn.textContent = 'Kopyalandi!';
         setTimeout(() => btn.textContent = 'Kopyala', 2000);
     });
+}
+
+// ── BYOK — Bring Your Own Key ──────────────────────────────────
+
+const PROVIDER_META = {
+    anthropic: {
+        label: 'Anthropic (Claude)',
+        hint: 'Anthropic Console → API Keys (sk-ant-...)',
+        placeholder: 'sk-ant-api03-...',
+    },
+    openai: {
+        label: 'OpenAI (GPT)',
+        hint: 'OpenAI Platform → API Keys (sk-...)',
+        placeholder: 'sk-proj-...',
+    },
+    google: {
+        label: 'Google AI (Gemini)',
+        hint: 'Google AI Studio → Get API Key',
+        placeholder: 'AIza...',
+    },
+    deepseek: {
+        label: 'DeepSeek',
+        hint: 'DeepSeek Platform → API Keys',
+        placeholder: 'sk-...',
+    },
+};
+
+let byokCurrentStatus = null;
+
+async function loadByokStatus() {
+    try {
+        const result = await apiCall('/v1/tenant/keys');
+        if (result && !result.error) {
+            byokCurrentStatus = result;
+            renderByokStatus(result);
+        }
+    } catch (e) {
+        // Non-critical — silently skip if encryption not configured
+    }
+}
+
+function renderByokStatus(status) {
+    const grid = document.getElementById('byok-status-grid');
+    const providerFlags = {
+        'Anthropic (Claude)': status.has_anthropic_key,
+        'OpenAI (GPT)': status.has_openai_key,
+        'Google AI (Gemini)': status.has_google_ai_key,
+        'DeepSeek': status.has_deepseek_key,
+    };
+    const providerKeys = {
+        'Anthropic (Claude)': 'anthropic',
+        'OpenAI (GPT)': 'openai',
+        'Google AI (Gemini)': 'google',
+        'DeepSeek': 'deepseek',
+    };
+    const activeProvider = status.llm_provider || 'anthropic';
+
+    grid.innerHTML = Object.entries(providerFlags).map(([label, hasKey]) => {
+        const key = providerKeys[label];
+        const isActive = key === activeProvider;
+        const dotClass = hasKey ? 'dot-active' : 'dot-inactive';
+        const statusText = hasKey ? 'Kayitli' : 'Kayitli degil';
+        return `
+            <div class="provider-status-item">
+                <span class="dot ${dotClass}"></span>
+                <span>${label}</span>
+                <span style="color:${hasKey ? '#2e7d32' : '#999'};margin-left:auto;font-size:0.75rem">${statusText}</span>
+                ${isActive ? '<span class="active-badge">AKTIF</span>' : ''}
+            </div>
+        `;
+    }).join('');
+
+    // Sync dropdown to active provider
+    const sel = document.getElementById('byok-provider-select');
+    if (sel) sel.value = activeProvider;
+    onProviderChange();
+}
+
+function onProviderChange() {
+    const provider = document.getElementById('byok-provider-select').value;
+    const meta = PROVIDER_META[provider] || {};
+    const hint = document.getElementById('byok-provider-hint');
+    const input = document.getElementById('byok-api-key');
+    if (hint) hint.textContent = meta.hint || '';
+    if (input) input.placeholder = meta.placeholder || 'API anahtarinizi girin...';
+}
+
+async function saveByokKey() {
+    const provider = document.getElementById('byok-provider-select').value;
+    const key = document.getElementById('byok-api-key').value.trim();
+    const msg = document.getElementById('byok-message');
+    msg.textContent = '';
+    msg.className = 'message';
+
+    if (!key) {
+        msg.textContent = 'Lutfen bir API anahtari girin.';
+        msg.className = 'message error';
+        return;
+    }
+
+    // Beta kilidi: yalnizca anthropic aktif. Diger saglayicilar "yakinda".
+    // API zaten 422 doner; bu sadece istek atmadan onceki UX guard'i.
+    if (provider !== 'anthropic') {
+        msg.textContent = 'Bu saglayici yakinda aktif olacak. Su an yalnizca Anthropic (Claude) destekleniyor.';
+        msg.className = 'message error';
+        return;
+    }
+
+    const providerKeyMap = {
+        anthropic: 'anthropic_key',
+        openai: 'openai_key',
+        google: 'google_ai_key',
+        deepseek: 'deepseek_key',
+    };
+    const bodyKey = providerKeyMap[provider];
+    if (!bodyKey) return;
+
+    const body = { [bodyKey]: key, llm_provider: provider };
+
+    try {
+        const result = await apiCall('/v1/tenant/keys', {
+            method: 'PUT',
+            body: JSON.stringify(body),
+        });
+        if (result && result.error) {
+            msg.textContent = result.error.message || 'Kaydetme hatasi';
+            msg.className = 'message error';
+        } else {
+            msg.textContent = `${PROVIDER_META[provider]?.label || provider} anahtari kaydedildi ve aktif saglayici olarak ayarlandi.`;
+            msg.className = 'message success';
+            document.getElementById('byok-api-key').value = '';
+            byokCurrentStatus = result;
+            renderByokStatus(result);
+        }
+    } catch (e) {
+        msg.textContent = 'Baglanti hatasi';
+        msg.className = 'message error';
+    }
+}
+
+async function deleteAllByokKeys() {
+    if (!confirm('Tum BYO anahtarlariniz silinecek. Sistem platform anahtarlarini kullanmaya devam edecek. Emin misiniz?')) return;
+    const msg = document.getElementById('byok-message');
+    try {
+        const result = await apiCall('/v1/tenant/keys', { method: 'DELETE' });
+        if (result && result.error) {
+            msg.textContent = result.error.message;
+            msg.className = 'message error';
+        } else {
+            msg.textContent = 'Tum anahtarlar silindi.';
+            msg.className = 'message success';
+            byokCurrentStatus = result;
+            renderByokStatus(result);
+        }
+    } catch (e) {
+        msg.textContent = 'Baglanti hatasi';
+        msg.className = 'message error';
+    }
 }
 
 // ── Portal & Billing ────────────────────────────────────────────

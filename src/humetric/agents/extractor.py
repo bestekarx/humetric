@@ -1,11 +1,11 @@
-"""Extracts metrics from signal text (Haiku model)."""
+"""Extracts metrics from signal text."""
 
 from __future__ import annotations
 
 from .. import config
 from ..schema import ExtractedMetric, ExtractionResult
 from . import _load_prompt
-from .base import structured_call
+from .multi_llm import structured_call_multi
 
 _DEFAULT_SYSTEM = _load_prompt("extractor-default")
 if not _DEFAULT_SYSTEM:
@@ -67,18 +67,22 @@ async def extract_metrics(
     pack_metrics: list[dict] | None = None,
     tenant_id: int | None = None,
     api_key: str | None = None,
+    provider: str | None = None,
     call_meta: dict | None = None,
 ) -> list[ExtractedMetric]:
     system, user = build_extract_inputs(signal_text, entity_context, pack_prompt, pack_metrics)
-    result = await structured_call(
-        model=config.AGENT_MODEL,
+    resolved_provider = provider or "anthropic"
+    model = config.get_extractor_model(resolved_provider)
+    result = await structured_call_multi(
+        provider=resolved_provider,
+        model=model,
+        api_key=api_key,
         system=system,
         user=user,
         schema=ExtractionResult,
         tool_name="extract_metrics",
         tool_description="Extract metrics from the signal text",
         tenant_id=tenant_id,
-        api_key=api_key,
         call_meta=call_meta,
     )
     return result.metrics
