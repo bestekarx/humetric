@@ -34,6 +34,12 @@ EMBED_DIM_COHERE = int(os.environ.get("HUMETRIC_EMBED_DIM_COHERE", "1024"))
 
 WORKER_POLL_INTERVAL_S = float(os.environ.get("HUMETRIC_WORKER_POLL_INTERVAL_S", "1"))
 WORKER_BATCH_SIZE = int(os.environ.get("HUMETRIC_WORKER_BATCH_SIZE", "5"))
+# Optional: restrict this worker process to specific task types (comma-separated).
+# Default (unset) claims any type. Lets a minutes-long analysis_scan run in a
+# separate worker process so it never delays real-time signal processing.
+WORKER_TASK_TYPES: list[str] | None = [
+    t.strip() for t in os.environ.get("HUMETRIC_WORKER_TASK_TYPES", "").split(",") if t.strip()
+] or None
 TASK_MAX_RETRIES = int(os.environ.get("HUMETRIC_TASK_MAX_RETRIES", "3"))
 WORKER_HEARTBEAT_FILE = os.environ.get("HUMETRIC_WORKER_HEARTBEAT_FILE", "/tmp/humetric_worker_heartbeat")
 
@@ -160,6 +166,26 @@ CORS_ALLOWED_ORIGINS = [
 
 # MCP (Spec 026)
 HUMETRIC_MCP_API_KEY = os.environ.get("HUMETRIC_MCP_API_KEY", "")
+
+# Metric Analyzer (Spec 027 — Faz 1: paid autonomous scan + refine)
+ANALYZER_MODEL = os.environ.get("HUMETRIC_ANALYZER_MODEL", "claude-fable-5")
+ANALYZER_FALLBACK_MODEL = os.environ.get("HUMETRIC_ANALYZER_FALLBACK_MODEL", "claude-opus-4-8")
+ANALYZER_EFFORT = os.environ.get("HUMETRIC_ANALYZER_EFFORT", "high")
+ANALYZER_MAX_TOKENS = int(os.environ.get("HUMETRIC_ANALYZER_MAX_TOKENS", "16000"))
+ANALYZER_MAX_REFINES = int(os.environ.get("HUMETRIC_ANALYZER_MAX_REFINES", "2"))
+ANALYZER_PAUSE_TURN_MAX = int(os.environ.get("HUMETRIC_ANALYZER_PAUSE_TURN_MAX", "5"))
+ANALYZER_MAX_IMAGES = int(os.environ.get("HUMETRIC_ANALYZER_MAX_IMAGES", "5"))
+ANALYZER_MAX_IMAGE_MB = int(os.environ.get("HUMETRIC_ANALYZER_MAX_IMAGE_MB", "5"))
+ANALYZER_MAX_SCHEMA_CHARS = int(os.environ.get("HUMETRIC_ANALYZER_MAX_SCHEMA_CHARS", "100000"))
+
+# Gentic MCP Research (Reddit sentiment, Google Trends, Serper web search).
+# Empty key disables market research — the analyzer runs schema/image-only.
+GENTIC_MCP_URL = os.environ.get("HUMETRIC_GENTIC_MCP_URL", "https://mcp.gentic.co/research")
+GENTIC_API_KEY = os.environ.get("HUMETRIC_GENTIC_API_KEY", "")
+
+# Stripe one-time price for a single Metric Analyzer scan. Empty = free/dev
+# mode: sessions skip pending_payment and go straight to processing.
+STRIPE_ANALYZER_PRICE_ID = os.environ.get("STRIPE_ANALYZER_PRICE_ID", "")
 
 # Self-service registration (Spec 026)
 REGISTER_RATE_LIMIT_PER_HOUR = int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT", "3"))

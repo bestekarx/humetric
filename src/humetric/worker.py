@@ -241,6 +241,22 @@ async def handle_failure(db: AsyncSession, task, exc: Exception) -> None:
     else:
         _log.error("Task %d permanently failed: %s", task.id, exc)
         await Store.fail_task_permanently(db, task.id, str(exc))
+        if task.task_type == "analysis_scan":
+            # Keep the analysis_session from being stuck in 'processing'
+            # forever — a permanently-failed initial scan fails the session,
+            # a failed refine falls back to findings_ready (prior findings
+            # survive). Best-effort: never let this hook itself crash the
+            # worker loop.
+            try:
+                await Store.mark_analysis_scan_failed(
+                    db,
+                    task.payload.get("session_id"),
+                    task.tenant_id,
+                    str(exc),
+                    task.payload.get("mode", "initial"),
+                )
+            except Exception:
+                _log.exception("Failed to mark analysis_scan session failed for task %d", task.id)
 
 
 async def process_one_task(db: AsyncSession, task) -> None:
@@ -254,6 +270,9 @@ async def process_one_task(db: AsyncSession, task) -> None:
             await process_re_embed_task(db, task)
         elif task.task_type == "lakehouse_export":
             await process_lakehouse_export_task(db, task)
+        elif task.task_type == "analysis_scan":
+            from .agents.analyzer import process_analysis_scan_task
+            await process_analysis_scan_task(db, task)
         else:
             await Store.fail_task_permanently(db, task.id, f"Unknown task_type: {task.task_type}")
             return
@@ -268,6 +287,14 @@ async def process_one_task(db: AsyncSession, task) -> None:
         # next tasks. set_config must be re-applied since rollback resets the GUC.
         try:
             await db.rollback()
+            # rollback() expires every attribute on `task` (id, tenant_id,
+            # retry_count, payload, ...) — the set_config call below and
+            # handle_failure() both read them next, and an expired attribute
+            # triggers an implicit synchronous reload that an AsyncSession
+            # can't perform (MissingGreenlet). Refresh explicitly first;
+            # refresh() itself only needs the identity key, not a live
+            # attribute, so it's safe to call while everything is expired.
+            await db.refresh(task)
             await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(task.tenant_id)})
         except Exception:
             pass
@@ -340,7 +367,9 @@ async def main():
             _write_heartbeat()
             try:
                 async with factory() as db:
-                    tasks = await Store.get_next_task(db, batch_size=config.WORKER_BATCH_SIZE)
+                    tasks = await Store.get_next_task(
+                        db, batch_size=config.WORKER_BATCH_SIZE, task_types=config.WORKER_TASK_TYPES,
+                    )
                     if tasks:
                         _log.info("Fetched %d tasks", len(tasks))
                         for task in tasks:

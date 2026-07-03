@@ -1,6 +1,7 @@
-"""SQLAlchemy ORM models — Humetric Phase 0 (Spec 021) + Signal/UsageRecord (Spec 022) + MetricPack (Spec 023) + Tenant registration/Stripe (Spec 026).
+"""SQLAlchemy ORM models — Humetric Phase 0 (Spec 021) + Signal/UsageRecord (Spec 022) + MetricPack (Spec 023) + Tenant registration/Stripe (Spec 026) + Metric Analyzer (Spec 027).
 
-9 tables: tenant, entity, entity_metric, api_key, consent, audit_log, signal, usage_record, metric_pack.
+11 tables: tenant, entity, entity_metric, api_key, consent, audit_log, signal, usage_record,
+metric_pack, task, analysis_session.
 RLS: every tenant-scoped table has a tenant_id FK + RLS policy (defined in migrations).
 """
 
@@ -396,11 +397,46 @@ class Task(Base):
             name="ck_task_status",
         ),
         CheckConstraint(
-            "task_type IN ('signal_process', 're_embed', 'lakehouse_export')",
+            "task_type IN ('signal_process', 're_embed', 'lakehouse_export', 'analysis_scan')",
             name="ck_task_type",
         ),
         Index("ix_task_tenant", "tenant_id"),
         Index("ix_task_signal", "signal_id"),
         Index("ix_task_status", "status"),
         Index("ix_task_next_retry", "status", "next_retry_at"),
+    )
+
+
+class AnalysisSession(Base):
+    """Metric Analyzer scan session (Spec 027 — Faz 1)."""
+    __tablename__ = "analysis_session"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = _tenant_fk()
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="pending_payment"
+    )
+    artifacts: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    report: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    findings: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    refine_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pack_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    checkout_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, onupdate=_now
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending_payment', 'processing', 'findings_ready', 'completed', 'failed')",
+            name="ck_analysis_session_status",
+        ),
+        Index("ix_analysis_session_tenant", "tenant_id"),
+        Index("ix_analysis_session_status", "tenant_id", "status"),
     )

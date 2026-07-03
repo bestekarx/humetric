@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HuMetric — Metric Analyzer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f6fa; color: #333; }
+        header { background: #1a1a2e; color: white; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        header a { color: #ccc; text-decoration: none; }
+        .container { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+        .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card h3 { margin-bottom: 1rem; font-size: 1.1rem; color: #1a1a2e; }
+        .btn { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; font-size: 0.875rem; }
+        .btn-primary { background: #e94560; color: white; }
+        .btn-outline { background: white; border: 1px solid #ddd; }
+        .btn-danger { background: #fff0f0; color: #c0392b; border: 1px solid #f5c6cb; }
+        .btn-sm { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .hidden { display: none; }
+        .message { margin-top: 0.5rem; font-size: 0.875rem; color: #666; }
+        .message.success { color: #2e7d32; }
+        .message.error { color: #e94560; }
+        textarea, input[type=text], input[type=password], select {
+            width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.875rem; font-family: inherit;
+        }
+        textarea { resize: vertical; min-height: 90px; }
+        .form-group { margin-bottom: 0.85rem; }
+        .form-group label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.3rem; color: #444; }
+        .form-hint { font-size: 0.75rem; color: #888; margin-top: 0.2rem; }
+        .row { display: flex; gap: 0.75rem; }
+        .row > * { flex: 1; }
+
+        .status-badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 12px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; }
+        .status-pending_payment { background: #fff3e0; color: #e65100; }
+        .status-processing { background: #e3f2fd; color: #1565c0; }
+        .status-findings_ready { background: #e8f5e9; color: #2e7d32; }
+        .status-completed { background: #ede7f6; color: #4527a0; }
+        .status-failed { background: #ffebee; color: #c62828; }
+
+        .session-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0; border-bottom: 1px solid #f0f0f0; }
+        .session-item:last-child { border-bottom: none; }
+        .session-item .title { font-weight: 600; font-size: 0.9rem; }
+        .session-item .meta { font-size: 0.75rem; color: #888; margin-top: 0.2rem; }
+
+        .image-chip-row { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+        .image-chip { display: flex; align-items: center; gap: 0.3rem; background: #f0f0f0; border-radius: 4px; padding: 0.2rem 0.5rem; font-size: 0.75rem; }
+        .image-chip button { border: none; background: none; color: #c0392b; cursor: pointer; font-weight: 700; }
+
+        #processing { text-align: center; padding: 3rem 1rem; }
+        .spinner { width: 36px; height: 36px; border: 4px solid #eee; border-top-color: #e94560; border-radius: 50%; margin: 0 auto 1rem; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .report-block { background: #f8f9fa; border-radius: 6px; padding: 1rem; margin-bottom: 0.75rem; font-size: 0.875rem; white-space: pre-wrap; line-height: 1.5; }
+        .report-block .kind { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: #888; margin-bottom: 0.4rem; }
+        .open-questions { background: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; }
+        .open-questions li { margin-left: 1.2rem; margin-bottom: 0.3rem; font-size: 0.875rem; }
+
+        .metric-row { border: 1px solid #eee; border-radius: 6px; padding: 0.75rem; margin-bottom: 0.6rem; position: relative; }
+        .metric-row .remove-btn { position: absolute; top: 0.5rem; right: 0.5rem; }
+        .metric-row .row { margin-bottom: 0.5rem; }
+        .metric-row label { font-size: 0.7rem; color: #888; }
+        .sensitive-row { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; }
+
+        details.advanced { margin-top: 0.75rem; }
+        details.advanced summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; color: #1a1a2e; padding: 0.4rem 0; }
+
+        .pack-created-box { background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 1.5rem; text-align: center; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>HuMetric — Metric Analyzer</h1>
+        <span>
+            <a href="/dashboard/index.html">Dashboard</a>
+            <a href="#" onclick="logout();return false" style="margin-left:1rem">Cikis</a>
+        </span>
+    </header>
+
+    <div class="container">
+        <div id="error" class="card hidden">
+            <h3>Hata</h3>
+            <p id="error-text" class="message error"></p>
+            <button class="btn btn-outline" onclick="showSection('session-list');loadSessionList()" style="margin-top:0.75rem">Listeye Don</button>
+        </div>
+
+        <!-- ── Session list ─────────────────────────────────────── -->
+        <div id="session-list" class="card hidden">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                <h3 style="margin:0">Analizler</h3>
+                <button class="btn btn-primary btn-sm" onclick="showNewSessionForm()">+ Yeni Analiz</button>
+            </div>
+            <div id="session-list-loading" style="color:#888;font-size:0.875rem">Yukleniyor...</div>
+            <div id="session-list-items"></div>
+            <p id="session-list-empty" class="hidden" style="color:#888;font-size:0.875rem">Henuz analiz yok. Ilk analizinizi baslatin.</p>
+        </div>
+
+        <!-- ── New session form ─────────────────────────────────── -->
+        <div id="new-session" class="card hidden">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+                <h3 style="margin:0">Yeni Metric Analizi</h3>
+                <button class="btn btn-outline btn-sm" onclick="showSection('session-list');loadSessionList()">Iptal</button>
+            </div>
+            <div class="form-group">
+                <label>Uygulama Aciklamasi</label>
+                <textarea id="new-message" placeholder="Uygulamanizin ne yaptigini, kullanicilarini ve amaclarini anlatin (en az 10 karakter)..." style="min-height:120px"></textarea>
+            </div>
+            <div class="row">
+                <div class="form-group">
+                    <label>DB Semasi Formati</label>
+                    <select id="new-schema-format">
+                        <option value="sql">SQL</option>
+                        <option value="json">JSON</option>
+                    </select>
+                </div>
+                <div class="form-group" style="flex:3">
+                    <label>DB Semasi (opsiyonel, SQL veya JSON metni yapistirin)</label>
+                    <textarea id="new-schema-text" placeholder="CREATE TABLE ... veya JSON semasi" style="font-family:monospace;font-size:0.8rem"></textarea>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Ekran Goruntuleri (opsiyonel, en fazla 5 gorsel)</label>
+                <input type="file" id="new-images" accept="image/png,image/jpeg,image/webp,image/gif" multiple onchange="handleImageInput(event)">
+                <div class="image-chip-row" id="image-chips"></div>
+                <div class="form-hint">PNG/JPEG/WEBP/GIF, gorsel basina en fazla 5MB.</div>
+            </div>
+            <p id="new-session-error" class="message error"></p>
+            <button class="btn btn-primary" id="start-analysis-btn" onclick="startAnalysis()">Analizi Baslat</button>
+        </div>
+
+        <!-- ── Processing / payment pending ─────────────────────── -->
+        <div id="processing" class="card hidden">
+            <div class="spinner"></div>
+            <p id="processing-text">Analiz devam ediyor — pazar arastirmasi dakikalar surebilir.</p>
+            <button class="btn btn-primary" id="go-to-checkout-btn" onclick="goToCheckout()" style="margin-top:1rem;display:none">Odemeye Git</button>
+        </div>
+
+        <!-- ── Findings ──────────────────────────────────────────── -->
+        <div id="findings" class="hidden">
+            <div class="card">
+                <h3>Rapor</h3>
+                <div id="report-blocks"></div>
+            </div>
+
+            <div class="card" id="open-questions-card">
+                <h3>Acik Sorular</h3>
+                <ul class="open-questions" id="open-questions-list"></ul>
+                <div class="form-group">
+                    <label>Yanitiniz / duzeltmeleriniz</label>
+                    <textarea id="refine-message" placeholder="Acik sorulara yanit verin veya bulguları duzeltin..."></textarea>
+                </div>
+                <p id="refine-error" class="message error"></p>
+                <button class="btn btn-primary" id="refine-btn" onclick="submitRefine()">Yanitla ve Gelistir</button>
+            </div>
+
+            <div class="card">
+                <h3>Metric Pack Taslagi</h3>
+                <div class="row">
+                    <div class="form-group">
+                        <label>Entity Type</label>
+                        <input type="text" id="f-entity-type">
+                    </div>
+                    <div class="form-group">
+                        <label>Label</label>
+                        <input type="text" id="f-label">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Ozet</label>
+                    <textarea id="f-summary" style="min-height:60px"></textarea>
+                </div>
+
+                <h4 style="margin:1rem 0 0.5rem;font-size:0.95rem">Metrikler</h4>
+                <div id="metrics-list"></div>
+                <button class="btn btn-outline btn-sm" onclick="addMetricRow()">+ Metrik Ekle</button>
+
+                <details class="advanced">
+                    <summary>Gelismis: prompt'lar ve alanlar</summary>
+                    <div class="form-group" style="margin-top:0.75rem">
+                        <label>Extraction Prompt</label>
+                        <textarea id="f-extraction-prompt"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Curation Prompt</label>
+                        <textarea id="f-curation-prompt"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Market Notlari</label>
+                        <textarea id="f-market-notes"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Gerekli Alanlar (JSON, key/type/label)</label>
+                        <textarea id="f-required-fields" style="font-family:monospace;font-size:0.8rem"></textarea>
+                    </div>
+                </details>
+
+                <p id="findings-message" class="message"></p>
+                <div style="display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap">
+                    <button class="btn btn-outline" onclick="saveFindingsEdits()">Degisiklikleri Kaydet</button>
+                    <div class="form-group" style="flex:1;min-width:160px;margin:0">
+                        <input type="text" id="pack-key-input" placeholder="pack_key (opsiyonel)">
+                    </div>
+                    <button class="btn btn-primary" onclick="createPack()">Pack Olustur</button>
+                    <button class="btn btn-danger" onclick="deleteCurrentSession()">Analizi Sil</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Done ──────────────────────────────────────────────── -->
+        <div id="done" class="card hidden">
+            <div class="pack-created-box">
+                <h3>Pack Olusturuldu</h3>
+                <p style="margin-top:0.5rem">Pack anahtari: <strong id="done-pack-key"></strong></p>
+                <button class="btn btn-outline" onclick="showSection('session-list');loadSessionList()" style="margin-top:1rem">Listeye Don</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="analyzer.js"></script>
+</body>
+</html>
