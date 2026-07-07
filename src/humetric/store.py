@@ -15,7 +15,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, config
-from .db.models import AnalysisSession, ApiKey, AuditLog, Consent, Entity, EntityMetric, MetricPack, Signal, Task, Tenant, UsageRecord
+from .db.models import ApiKey, AuditLog, Consent, Entity, EntityMetric, MetricPack, Signal, Task, Tenant, UsageRecord
 
 _log = logging.getLogger(__name__)
 
@@ -29,8 +29,8 @@ class Store:
     async def create_tenant(db: AsyncSession, data: dict) -> Tenant:
         tenant = Tenant(**data)
         db.add(tenant)
+        await db.flush()
         await db.commit()
-        await db.refresh(tenant)
         return tenant
 
     @staticmethod
@@ -49,8 +49,8 @@ class Store:
     async def create_entity(db: AsyncSession, data: dict) -> Entity:
         entity = Entity(**data)
         db.add(entity)
+        await db.flush()
         await db.commit()
-        await db.refresh(entity)
         return entity
 
     @staticmethod
@@ -85,8 +85,8 @@ class Store:
             entity = Entity(**data)
 
         db.add(entity)
+        await db.flush()
         await db.commit()
-        await db.refresh(entity)
         return entity
 
     @staticmethod
@@ -137,8 +137,8 @@ class Store:
             metric = EntityMetric(**data)
 
         db.add(metric)
+        await db.flush()
         await db.commit()
-        await db.refresh(metric)
         return metric
 
     # --- Signal (Spec 022) ---
@@ -147,8 +147,8 @@ class Store:
     async def create_signal(db: AsyncSession, data: dict) -> Signal:
         signal = Signal(**data)
         db.add(signal)
+        await db.flush()
         await db.commit()
-        await db.refresh(signal)
         return signal
 
     @staticmethod
@@ -177,8 +177,8 @@ class Store:
         if status in ("completed", "failed"):
             signal.processed_at = datetime.now(timezone.utc)
         db.add(signal)
+        await db.flush()
         await db.commit()
-        await db.refresh(signal)
         return signal
 
     # --- UsageRecord (Spec 022) ---
@@ -213,8 +213,13 @@ class Store:
             expires_at=expires_at,
         )
         db.add(api_key)
+        # flush (not refresh-after-commit) populates the autoincrement id
+        # within the same transaction — the RLS GUC set by get_tenant_db()
+        # is only guaranteed for the transaction it was set in, and commit()
+        # releases the connection back to the pool, so a post-commit refresh
+        # can land on a connection without app.tenant_id set.
+        await db.flush()
         await db.commit()
-        await db.refresh(api_key)
         return full_key, api_key
 
     @staticmethod
@@ -254,12 +259,12 @@ class Store:
         return api_key, None
 
     @staticmethod
-    async def revoke_api_key(db: AsyncSession, key_id: int) -> bool:
+    async def delete_api_key(db: AsyncSession, key_id: int) -> bool:
         result = await db.execute(select(ApiKey).where(ApiKey.id == key_id))
         api_key = result.scalar_one_or_none()
         if api_key is None:
             return False
-        api_key.is_revoked = True
+        await db.delete(api_key)
         await db.commit()
         return True
 
@@ -268,7 +273,10 @@ class Store:
         db: AsyncSession, tenant_id: int,
     ) -> list[ApiKey]:
         result = await db.execute(
-            select(ApiKey).where(ApiKey.tenant_id == tenant_id)
+            select(ApiKey).where(
+                ApiKey.tenant_id == tenant_id,
+                ApiKey.is_revoked == False,  # noqa: E712
+            )
         )
         return list(result.scalars().all())
 
@@ -278,8 +286,8 @@ class Store:
     async def create_consent(db: AsyncSession, data: dict) -> Consent:
         consent = Consent(**data)
         db.add(consent)
+        await db.flush()
         await db.commit()
-        await db.refresh(consent)
         return consent
 
     @staticmethod
@@ -360,8 +368,8 @@ class Store:
     async def write_audit_log(db: AsyncSession, data: dict) -> AuditLog:
         log = AuditLog(**data)
         db.add(log)
+        await db.flush()
         await db.commit()
-        await db.refresh(log)
         return log
 
     @staticmethod
@@ -421,8 +429,8 @@ class Store:
             definition=definition,
         )
         db.add(pack)
+        await db.flush()
         await db.commit()
-        await db.refresh(pack)
         return pack
 
     @staticmethod
@@ -475,8 +483,8 @@ class Store:
         pack.definition = definition
         pack.updated_at = datetime.now(timezone.utc)
         db.add(pack)
+        await db.flush()
         await db.commit()
-        await db.refresh(pack)
         return pack
 
     @staticmethod
@@ -631,8 +639,8 @@ class Store:
     async def create_task(db: AsyncSession, data: dict) -> Task:
         task = Task(**data)
         db.add(task)
+        await db.flush()
         await db.commit()
-        await db.refresh(task)
         return task
 
     @staticmethod
@@ -712,103 +720,6 @@ class Store:
             task.next_retry_at = next_retry_at
             task.started_at = None
             await db.commit()
-
-    # --- Analysis Session (Spec 027 — Metric Analyzer) ---
-
-    @staticmethod
-    async def create_analysis_session(db: AsyncSession, data: dict) -> AnalysisSession:
-        session = AnalysisSession(**data)
-        db.add(session)
-        await db.commit()
-        await db.refresh(session)
-        return session
-
-    @staticmethod
-    async def get_analysis_session(
-        db: AsyncSession, session_id: int, tenant_id: int,
-    ) -> AnalysisSession | None:
-        result = await db.execute(
-            select(AnalysisSession).where(
-                AnalysisSession.id == session_id,
-                AnalysisSession.tenant_id == tenant_id,
-            )
-        )
-        return result.scalar_one_or_none()
-
-    @staticmethod
-    async def list_analysis_sessions(
-        db: AsyncSession, tenant_id: int, limit: int = 50, offset: int = 0,
-    ) -> tuple[list[AnalysisSession], int]:
-        from sqlalchemy import func
-
-        stmt = (
-            select(AnalysisSession)
-            .where(AnalysisSession.tenant_id == tenant_id)
-            .order_by(AnalysisSession.created_at.desc())
-            .limit(limit)
-            .offset(offset)
-        )
-        result = await db.execute(stmt)
-        items = list(result.scalars().all())
-        total = await db.scalar(
-            select(func.count()).select_from(AnalysisSession).where(
-                AnalysisSession.tenant_id == tenant_id
-            )
-        ) or 0
-        return items, total
-
-    @staticmethod
-    async def transition_analysis_status(
-        db: AsyncSession,
-        session_id: int,
-        tenant_id: int,
-        from_status: str,
-        to_status: str,
-        updates: dict | None = None,
-    ) -> bool:
-        """Conditional UPDATE (WHERE status=from_status) — double-clicks and
-        webhook retries racing the same transition land 0 rows instead of a
-        double side effect (e.g. a duplicate enqueued task). Returns whether
-        the transition actually happened."""
-        values: dict = {"status": to_status, "updated_at": datetime.now(timezone.utc)}
-        if updates:
-            values.update(updates)
-        result = await db.execute(
-            update(AnalysisSession)
-            .where(
-                AnalysisSession.id == session_id,
-                AnalysisSession.tenant_id == tenant_id,
-                AnalysisSession.status == from_status,
-            )
-            .values(**values)
-        )
-        await db.commit()
-        return (result.rowcount or 0) > 0
-
-    @staticmethod
-    async def delete_analysis_session(db: AsyncSession, session_id: int, tenant_id: int) -> bool:
-        session = await Store.get_analysis_session(db, session_id, tenant_id)
-        if not session:
-            return False
-        await db.delete(session)
-        await db.commit()
-        return True
-
-    @staticmethod
-    async def mark_analysis_scan_failed(
-        db: AsyncSession, session_id: int, tenant_id: int, error: str, mode: str,
-    ) -> None:
-        """A permanently-failed initial scan fails the whole session; a failed
-        refine falls back to findings_ready so the previous findings survive
-        and the user can retry the refine instead of losing the scan."""
-        session = await Store.get_analysis_session(db, session_id, tenant_id)
-        if not session:
-            return
-        session.status = "failed" if mode == "initial" else "findings_ready"
-        session.error = error
-        session.updated_at = datetime.now(timezone.utc)
-        db.add(session)
-        await db.commit()
 
     # --- Idempotency (Spec 024) ---
 
@@ -1009,8 +920,8 @@ class Store:
         metric.confidence = confidence
         metric.last_updated = datetime.now(timezone.utc)
         db.add(metric)
+        await db.flush()
         await db.commit()
-        await db.refresh(metric)
         return metric
 
     @staticmethod

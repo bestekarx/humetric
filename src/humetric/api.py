@@ -34,7 +34,6 @@ from .middleware.rate_limit import RateLimitMiddleware
 from .services.captcha_service import verify_captcha
 from .services.email_service import send_verification_email, send_welcome_email
 from .services.stripe_service import (
-    create_analyzer_checkout_session,
     create_checkout_session,
     create_customer,
     create_customer_portal_session,
@@ -45,15 +44,6 @@ from .services.usage_service import (
     record_signal,
 )
 from .schema import (
-    AnalyzerArtifactMeta,
-    AnalyzerCreatePackRequest,
-    AnalyzerFindings,
-    AnalyzerRefineRequest,
-    AnalyzerReportSection,
-    AnalyzerSessionCreate,
-    AnalyzerSessionListItem,
-    AnalyzerSessionListResponse,
-    AnalyzerSessionRead,
     ApiKeyCreated,
     ApiKeyCreate,
     ApiKeyListResponse,
@@ -639,23 +629,10 @@ async def delete_api_key(
     if getattr(request.state, "api_key_id", None) is not None and key_id == request.state.api_key_id:
         raise HTTPException(
             status_code=403,
-            detail=error_envelope("cannot_revoke_self", "Cannot revoke the API key used for this request. Create a new key first, then use it to revoke this one.").model_dump(),
+            detail=error_envelope("cannot_delete_self", "Cannot delete the API key used for this request. Create a new key first, then use it to delete this one.").model_dump(),
         )
 
-    from sqlalchemy import func
-    active_count_result = await db.execute(
-        select(func.count()).select_from(ApiKey).where(
-            ApiKey.tenant_id == request.state.tenant_id,
-            ApiKey.is_revoked == False,  # noqa: E712
-        )
-    )
-    if active_count_result.scalar() <= 1:
-        raise HTTPException(
-            status_code=403,
-            detail=error_envelope("cannot_revoke_last_key", "Cannot revoke the last active API key. Create a new key first.").model_dump(),
-        )
-
-    ok = await Store.revoke_api_key(db, key_id)
+    ok = await Store.delete_api_key(db, key_id)
     if not ok:
         raise HTTPException(
             status_code=404,
@@ -664,11 +641,11 @@ async def delete_api_key(
     await Store.audit(
         db,
         tenant_id=request.state.tenant_id,
-        action="api_key.revoked",
+        action="api_key.deleted",
         api_key_id=key_id,
-        details={"revoked_by_key_id": request.state.api_key_id},
+        details={"deleted_by_key_id": request.state.api_key_id},
     )
-    return {"status": "revoked", "id": key_id}
+    return {"status": "deleted", "id": key_id}
 
 
 # ── GET /v1/audit-logs ────────────────────────────────────────
@@ -1619,370 +1596,6 @@ async def list_pending_reviews(
         }
         for m in pending
     ]
-
-
-# ── Metric Analyzer (Spec 027 — Faz 1) ─────────────────────────
-
-def _analysis_session_to_read(session, checkout_url: str | None = None) -> AnalyzerSessionRead:
-    findings = AnalyzerFindings.model_validate(session.findings) if session.findings else None
-    artifacts = [
-        AnalyzerArtifactMeta(
-            kind=a.get("kind", ""),
-            name=a.get("name", a.get("kind", "")),
-            format=a.get("format"),
-            media_type=a.get("media_type"),
-            size=len(a.get("data_b64", "")) if a.get("kind") == "image" else len(a.get("text") or ""),
-        )
-        for a in session.artifacts
-    ]
-    report = [AnalyzerReportSection(**s) for s in session.report]
-    return AnalyzerSessionRead(
-        id=session.id,
-        title=session.title,
-        status=session.status,
-        refine_count=session.refine_count,
-        max_refines=config.ANALYZER_MAX_REFINES,
-        report=report,
-        artifacts=artifacts,
-        findings=findings,
-        error=session.error,
-        pack_key=session.pack_key,
-        checkout_url=checkout_url,
-        paid_at=session.paid_at,
-        created_at=session.created_at,
-    )
-
-
-@app.post(
-    f"{V1_PREFIX}/analyzer/sessions",
-    tags=["Analyzer"],
-    status_code=201,
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def create_analyzer_session(
-    body: AnalyzerSessionCreate,
-    request: Request,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    tenant_id = request.state.tenant_id
-
-    artifacts: list[dict] = [{"kind": "description", "name": "description.txt", "text": body.message}]
-    if body.schema_text:
-        fmt = body.schema_format or "sql"
-        artifacts.append({"kind": "schema", "format": fmt, "name": f"schema.{fmt}", "text": body.schema_text})
-    for img in body.images:
-        artifacts.append({
-            "kind": "image", "name": img.name, "media_type": img.media_type, "data_b64": img.data_b64,
-        })
-
-    paid_mode = bool(config.STRIPE_ANALYZER_PRICE_ID)
-    session = await Store.create_analysis_session(db, {
-        "tenant_id": tenant_id,
-        "title": body.message[:80],
-        "status": "pending_payment" if paid_mode else "processing",
-        "artifacts": artifacts,
-    })
-
-    checkout_url: str | None = None
-    if paid_mode:
-        tenant = await db.get(Tenant, tenant_id)
-        if not tenant:
-            raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
-        if not tenant.stripe_customer_id and tenant.email:
-            customer = await create_customer(tenant.email, tenant_id)
-            tenant.stripe_customer_id = customer.id
-            await db.commit()
-        checkout_url = await create_analyzer_checkout_session(
-            tenant.stripe_customer_id, tenant_id, session.id,
-        )
-    else:
-        await Store.create_task(db, {
-            "tenant_id": tenant_id,
-            "signal_id": None,
-            "task_type": "analysis_scan",
-            "status": "queued",
-            "payload": {"session_id": session.id, "mode": "initial"},
-        })
-
-    return _analysis_session_to_read(session, checkout_url=checkout_url)
-
-
-@app.get(
-    f"{V1_PREFIX}/analyzer/sessions",
-    tags=["Analyzer"],
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def list_analyzer_sessions(
-    request: Request,
-    limit: int = 50,
-    offset: int = 0,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    tenant_id = request.state.tenant_id
-    if limit > 200:
-        limit = 200
-
-    items, total = await Store.list_analysis_sessions(db, tenant_id, limit=limit, offset=offset)
-    return AnalyzerSessionListResponse(
-        items=[
-            AnalyzerSessionListItem(
-                id=s.id, title=s.title, status=s.status, refine_count=s.refine_count,
-                pack_key=s.pack_key, paid_at=s.paid_at, created_at=s.created_at,
-            )
-            for s in items
-        ],
-        total=total,
-    )
-
-
-@app.get(
-    f"{V1_PREFIX}/analyzer/sessions/{{session_id}}",
-    tags=["Analyzer"],
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def get_analyzer_session(
-    session_id: int,
-    request: Request,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    session = await Store.get_analysis_session(db, session_id, request.state.tenant_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=error_envelope("analyzer_session_not_found", f"Analysis session not found: {session_id}").model_dump(),
-        )
-    return _analysis_session_to_read(session)
-
-
-@app.post(
-    f"{V1_PREFIX}/analyzer/sessions/{{session_id}}/checkout",
-    tags=["Analyzer"],
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def create_analyzer_session_checkout(
-    session_id: int,
-    request: Request,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    tenant_id = request.state.tenant_id
-    session = await Store.get_analysis_session(db, session_id, tenant_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=error_envelope("analyzer_session_not_found", f"Analysis session not found: {session_id}").model_dump(),
-        )
-    if session.status != "pending_payment":
-        raise HTTPException(
-            status_code=409,
-            detail=error_envelope("analyzer_invalid_state", f"Session is not awaiting payment (status={session.status})").model_dump(),
-        )
-
-    tenant = await db.get(Tenant, tenant_id)
-    if not tenant:
-        raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
-    if not tenant.stripe_customer_id and tenant.email:
-        customer = await create_customer(tenant.email, tenant_id)
-        tenant.stripe_customer_id = customer.id
-        await db.commit()
-
-    checkout_url = await create_analyzer_checkout_session(
-        tenant.stripe_customer_id, tenant_id, session.id,
-    )
-    return CheckoutResponse(checkout_url=checkout_url).model_dump()
-
-
-@app.post(
-    f"{V1_PREFIX}/analyzer/sessions/{{session_id}}/refine",
-    tags=["Analyzer"],
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def refine_analyzer_session(
-    session_id: int,
-    body: AnalyzerRefineRequest,
-    request: Request,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    tenant_id = request.state.tenant_id
-
-    session = await Store.get_analysis_session(db, session_id, tenant_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=error_envelope("analyzer_session_not_found", f"Analysis session not found: {session_id}").model_dump(),
-        )
-    if session.refine_count >= config.ANALYZER_MAX_REFINES:
-        raise HTTPException(
-            status_code=422,
-            detail=error_envelope("analyzer_refine_limit_exceeded", f"Refine limit reached ({config.ANALYZER_MAX_REFINES})").model_dump(),
-        )
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-    new_report = [*session.report, {"kind": "refine_input", "text": body.message, "ts": now_iso}]
-
-    transitioned = await Store.transition_analysis_status(
-        db, session_id, tenant_id,
-        from_status="findings_ready", to_status="processing",
-        updates={"report": new_report},
-    )
-    if not transitioned:
-        raise HTTPException(
-            status_code=409,
-            detail=error_envelope("analyzer_invalid_state", f"Session is not ready to refine (status={session.status})").model_dump(),
-        )
-
-    await Store.create_task(db, {
-        "tenant_id": tenant_id,
-        "signal_id": None,
-        "task_type": "analysis_scan",
-        "status": "queued",
-        "payload": {"session_id": session_id, "mode": "refine", "user_input": body.message},
-    })
-
-    session = await Store.get_analysis_session(db, session_id, tenant_id)
-    return _analysis_session_to_read(session)
-
-
-@app.put(
-    f"{V1_PREFIX}/analyzer/sessions/{{session_id}}/findings",
-    tags=["Analyzer"],
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def update_analyzer_session_findings(
-    session_id: int,
-    body: AnalyzerFindings,
-    request: Request,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    tenant_id = request.state.tenant_id
-
-    session = await Store.get_analysis_session(db, session_id, tenant_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=error_envelope("analyzer_session_not_found", f"Analysis session not found: {session_id}").model_dump(),
-        )
-    if session.status != "findings_ready":
-        raise HTTPException(
-            status_code=409,
-            detail=error_envelope("analyzer_invalid_state", f"Findings are not editable in status={session.status}").model_dump(),
-        )
-
-    session.findings = body.model_dump()
-    session.updated_at = datetime.now(timezone.utc)
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
-    return _analysis_session_to_read(session)
-
-
-@app.post(
-    f"{V1_PREFIX}/analyzer/sessions/{{session_id}}/create-pack",
-    tags=["Analyzer"],
-    status_code=201,
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def create_pack_from_analyzer_session(
-    session_id: int,
-    body: AnalyzerCreatePackRequest,
-    request: Request,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    tenant_id = request.state.tenant_id
-
-    session = await Store.get_analysis_session(db, session_id, tenant_id)
-    if not session:
-        raise HTTPException(
-            status_code=404,
-            detail=error_envelope("analyzer_session_not_found", f"Analysis session not found: {session_id}").model_dump(),
-        )
-    if session.status != "findings_ready" or not session.findings:
-        raise HTTPException(
-            status_code=409,
-            detail=error_envelope("analyzer_invalid_state", f"No findings ready to turn into a pack (status={session.status})").model_dump(),
-        )
-
-    from .agents.analyzer import findings_to_pack_definition
-
-    findings = AnalyzerFindings.model_validate(session.findings)
-    try:
-        pack_def = findings_to_pack_definition(findings)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=error_envelope("validation_error", f"Invalid pack definition from findings: {exc}").model_dump(),
-        )
-
-    pack_key = body.pack_key or findings.entity_type
-
-    existing = await Store.get_pack(db, tenant_id, pack_key)
-    if existing:
-        raise HTTPException(
-            status_code=409,
-            detail=error_envelope("pack_already_exists", f"Pack '{pack_key}' already exists").model_dump(),
-        )
-    existing_type_key, _ = await Store.entity_type_exists_in_active_pack(db, tenant_id, findings.entity_type)
-    if existing_type_key and existing_type_key != pack_key:
-        raise HTTPException(
-            status_code=409,
-            detail=error_envelope(
-                "entity_type_already_active",
-                f"Entity type '{findings.entity_type}' is already active in pack '{existing_type_key}'",
-            ).model_dump(),
-        )
-
-    await Store.create_pack(db, tenant_id, pack_key, 1, pack_def)
-
-    session.status = "completed"
-    session.pack_key = pack_key
-    session.updated_at = datetime.now(timezone.utc)
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
-
-    return _analysis_session_to_read(session)
-
-
-@app.delete(
-    f"{V1_PREFIX}/analyzer/sessions/{{session_id}}",
-    tags=["Analyzer"],
-    responses={
-        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
-    },
-)
-async def delete_analyzer_session(
-    session_id: int,
-    request: Request,
-    db: AsyncSession = Depends(_get_tenant_session),
-):
-    _require_scope(request, "packs:admin")
-    ok = await Store.delete_analysis_session(db, session_id, request.state.tenant_id)
-    if not ok:
-        raise HTTPException(
-            status_code=404,
-            detail=error_envelope("analyzer_session_not_found", f"Analysis session not found: {session_id}").model_dump(),
-        )
-    return {"deleted": True, "id": session_id}
 
 
 # ── Middleware chain ───────────────────────────────────────────

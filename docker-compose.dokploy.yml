@@ -26,6 +26,14 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
       DATABASE_URL_APP: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
+      # Fresh installs create the humetric_app role with this password
+      # (migration 001). On an EXISTING database the role already exists —
+      # rotate its password to the same value with (plain postgresql:// URL,
+      # not the SQLAlchemy postgresql+psycopg:// form):
+      #   psql "postgresql://<admin>:<pass>@<host>:5432/humetric" -f scripts/create_app_role.sql
+      # Password must be [A-Za-z0-9_-] only — migration 001 rejects anything
+      # else, and it is embedded in DATABASE_URL_APP without URL-encoding.
+      HUMETRIC_APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD (humetric_app role password) in Dokploy env}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
     restart: on-failure
 
@@ -40,12 +48,9 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
-      # TEMP (beta launch): humetric_app cutover deferred — app runs on the
-      # owner connection so no APP_DB_PASSWORD rotation is required to go live.
-      # To finish the cutover: rotate the humetric_app role password + set
-      # APP_DB_PASSWORD in Dokploy, then restore the humetric_app line:
-      #   DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD}@db:5432/${POSTGRES_DB:-humetric}
-      DATABASE_URL_APP: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
+      # Runtime queries go through the restricted humetric_app role so
+      # Postgres RLS is actually enforced (the owner role bypasses it).
+      DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD (humetric_app role password) in Dokploy env}@db:5432/${POSTGRES_DB:-humetric}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
@@ -65,6 +70,7 @@ services:
       - "traefik.http.routers.humetric-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.humetric-api.loadbalancer.server.port=8002"
 
+  # Real-time worker: signal pipeline + re-embed + nightly export.
   worker:
     build:
       context: .
@@ -76,9 +82,12 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
+      # Task claiming scans the queue cross-tenant, so the worker keeps the
+      # owner connection for DATABASE_URL (see worker.py main()); per-task
+      # tenant isolation is applied via the GUC + explicit tenant filters.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
-      # TEMP (beta launch): humetric_app cutover deferred — see api service above.
-      DATABASE_URL_APP: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
+      DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD (humetric_app role password) in Dokploy env}@db:5432/${POSTGRES_DB:-humetric}
+      HUMETRIC_WORKER_TASK_TYPES: signal_process,re_embed,lakehouse_export
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
@@ -90,6 +99,30 @@ services:
       start_period: 15s
       retries: 3
     restart: unless-stopped
+
+  # One-shot backfill job — drains the signal_process queue via the Anthropic
+  # Message Batches API (50% cost) and exits. Not started by default; run on
+  # demand:
+  #   docker compose -f docker-compose.dokploy.yml --profile backfill run --rm batch-backfill
+  batch-backfill:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    command: python -m humetric.batch_worker
+    profiles: ["backfill"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
+      DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD (humetric_app role password) in Dokploy env}@db:5432/${POSTGRES_DB:-humetric}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY}
+      HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
+      HUMETRIC_ENCRYPTION_KEY: ${HUMETRIC_ENCRYPTION_KEY:-}
+      HUMETRIC_BATCH_SUBMIT_SIZE: ${HUMETRIC_BATCH_SUBMIT_SIZE:-1000}
+      HUMETRIC_CURATOR_FAST_PATH_ENABLED: ${HUMETRIC_CURATOR_FAST_PATH_ENABLED:-true}
+    restart: "no"
 
 volumes:
   humetric_pgdata:

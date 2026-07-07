@@ -167,26 +167,6 @@ CORS_ALLOWED_ORIGINS = [
 # MCP (Spec 026)
 HUMETRIC_MCP_API_KEY = os.environ.get("HUMETRIC_MCP_API_KEY", "")
 
-# Metric Analyzer (Spec 027 — Faz 1: paid autonomous scan + refine)
-ANALYZER_MODEL = os.environ.get("HUMETRIC_ANALYZER_MODEL", "claude-fable-5")
-ANALYZER_FALLBACK_MODEL = os.environ.get("HUMETRIC_ANALYZER_FALLBACK_MODEL", "claude-opus-4-8")
-ANALYZER_EFFORT = os.environ.get("HUMETRIC_ANALYZER_EFFORT", "high")
-ANALYZER_MAX_TOKENS = int(os.environ.get("HUMETRIC_ANALYZER_MAX_TOKENS", "16000"))
-ANALYZER_MAX_REFINES = int(os.environ.get("HUMETRIC_ANALYZER_MAX_REFINES", "2"))
-ANALYZER_PAUSE_TURN_MAX = int(os.environ.get("HUMETRIC_ANALYZER_PAUSE_TURN_MAX", "5"))
-ANALYZER_MAX_IMAGES = int(os.environ.get("HUMETRIC_ANALYZER_MAX_IMAGES", "5"))
-ANALYZER_MAX_IMAGE_MB = int(os.environ.get("HUMETRIC_ANALYZER_MAX_IMAGE_MB", "5"))
-ANALYZER_MAX_SCHEMA_CHARS = int(os.environ.get("HUMETRIC_ANALYZER_MAX_SCHEMA_CHARS", "100000"))
-
-# Gentic MCP Research (Reddit sentiment, Google Trends, Serper web search).
-# Empty key disables market research — the analyzer runs schema/image-only.
-GENTIC_MCP_URL = os.environ.get("HUMETRIC_GENTIC_MCP_URL", "https://mcp.gentic.co/research")
-GENTIC_API_KEY = os.environ.get("HUMETRIC_GENTIC_API_KEY", "")
-
-# Stripe one-time price for a single Metric Analyzer scan. Empty = free/dev
-# mode: sessions skip pending_payment and go straight to processing.
-STRIPE_ANALYZER_PRICE_ID = os.environ.get("STRIPE_ANALYZER_PRICE_ID", "")
-
 # Self-service registration (Spec 026)
 REGISTER_RATE_LIMIT_PER_HOUR = int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT", "3"))
 # When false, /register auto-verifies the tenant and returns the API key

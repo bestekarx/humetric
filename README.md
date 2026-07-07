@@ -251,9 +251,30 @@ For Claude Desktop, add to `claude_desktop_config.json`:
 
 Available tools: `humetric_ingest_signal`, `humetric_query_entities`, `humetric_get_entity`, `humetric_list_entities`.
 
+## Batch Backfill Worker
+
+For bulk historical imports, a one-shot job drains the `signal_process`
+queue through the Anthropic Message Batches API at **50% of the synchronous
+cost**, then exits:
+
+```bash
+python -m humetric.batch_worker
+# or, in the Dokploy/production stack:
+docker compose -f docker-compose.dokploy.yml --profile backfill run --rm batch-backfill
+```
+
+Tasks stuck in `processing` by a crashed run are reclaimed on the next start.
+Pair with `HUMETRIC_CURATOR_FAST_PATH_ENABLED=true` to skip the curator LLM
+call for cold-start entities.
+
 ## BYO-Key (Bring Your Own Keys)
 
 Tenants can use their own Anthropic and Voyage API keys instead of the platform keys. Keys are encrypted at rest with AES-256-GCM.
+
+**Multi-provider (beta-locked):** the key store and agent pipeline also
+support OpenAI, Google AI, and DeepSeek per-tenant keys. During the beta only
+Anthropic is enabled; flip on more providers with
+`HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic,openai,google,deepseek`.
 
 ```bash
 # Generate encryption key
@@ -393,6 +414,32 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 ```
 
 Worker runs alongside the database; scale horizontally by adding more worker replicas. The task queue uses PostgreSQL advisory locking for safe concurrent consumption.
+
+### Production security checklist
+
+RLS is only enforced when runtime queries go through the **restricted
+`humetric_app` role** — the database owner/superuser bypasses every policy.
+Before going live:
+
+1. **Set a strong app-role password.** Migration `001` creates `humetric_app`
+   with the password from `HUMETRIC_APP_DB_PASSWORD` (dev default:
+   `humetric_app`). Set that env var before the first `alembic upgrade head`.
+2. **Existing database?** The role already exists — rotate its password.
+   Note: psql needs a plain `postgresql://` URL, not the SQLAlchemy
+   `postgresql+psycopg://` form used in `.env`:
+   ```bash
+   # Edit <STRONG_PASSWORD> in the script first
+   psql "postgresql://<admin_user>:<admin_password>@<host>:<port>/humetric" \
+     -f scripts/create_app_role.sql
+   ```
+3. **Point `DATABASE_URL_APP` at the app role**, not the owner:
+   ```
+   DATABASE_URL_APP=postgresql+psycopg://humetric_app:<STRONG_PASSWORD>@db:5432/humetric
+   ```
+   `docker-compose.dokploy.yml` wires this automatically and refuses to start
+   if `APP_DB_PASSWORD` is unset.
+4. **Restrict CORS**: set `HUMETRIC_CORS_ALLOWED_ORIGINS` to your dashboard
+   origin(s) — the `*` default is for local dev only.
 
 ## Contributing
 
