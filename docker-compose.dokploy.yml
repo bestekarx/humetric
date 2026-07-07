@@ -63,8 +63,12 @@ services:
       HUMETRIC_FREE_TIER_PACK_LIMIT: ${HUMETRIC_FREE_TIER_PACK_LIMIT:-1}
       HUMETRIC_CORS_ALLOWED_ORIGINS: ${HUMETRIC_CORS_ALLOWED_ORIGINS:-https://gethumetric.com,https://www.gethumetric.com}
     restart: unless-stopped
+    networks:
+      - default
+      - dokploy-network
     labels:
       - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
       - "traefik.http.routers.humetric-api.rule=Host(`api.gethumetric.com`)"
       - "traefik.http.routers.humetric-api.entrypoints=websecure"
       - "traefik.http.routers.humetric-api.tls.certresolver=letsencrypt"
@@ -126,3 +130,10 @@ services:
 
 volumes:
   humetric_pgdata:
+
+# Dokploy's Traefik only routes to services attached to this external network
+# (its docker provider ignores containers outside it). The api service joins
+# both `default` (to reach db/worker) and `dokploy-network` (for ingress).
+networks:
+  dokploy-network:
+    external: true
