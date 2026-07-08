@@ -7,6 +7,7 @@ Stored as a SHA-256 hash, generated with secrets.token_urlsafe(32).
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 
 
@@ -29,7 +30,7 @@ def hash_key(key: str) -> str:
 
 def verify_key(full_key: str, stored_hash: str) -> bool:
     """Does the incoming API key's hash match the one stored in the DB?"""
-    return hashlib.sha256(full_key.encode()).hexdigest() == stored_hash
+    return hmac.compare_digest(hashlib.sha256(full_key.encode()).hexdigest(), stored_hash)
 
 
 def extract_prefix(full_key: str) -> str | None:
