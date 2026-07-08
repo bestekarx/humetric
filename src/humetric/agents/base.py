@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Type, TypeVar
 
@@ -10,6 +11,8 @@ from pydantic import BaseModel
 
 from .. import config
 from .. import telemetry
+
+_log = logging.getLogger(__name__)
 
 _client: anthropic.Anthropic | None = None
 _byo_client_cache: dict[str, anthropic.Anthropic] = {}
@@ -42,7 +45,11 @@ async def get_tenant_llm_key(tenant_id: int, db) -> str:
     from ..store import Store
     try:
         tenant_key = await Store.decrypt_tenant_key(db, tenant_id, "anthropic")
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "BYO key lookup failed for tenant %d, falling back to platform key: %s",
+            tenant_id, exc,
+        )
         tenant_key = None
     return tenant_key or config.ANTHROPIC_API_KEY
 
@@ -56,7 +63,11 @@ async def get_tenant_llm_config(tenant_id: int, db) -> tuple[str, str | None]:
     from ..store import Store
     try:
         keys_dict = await Store.get_tenant_keys(db, tenant_id)
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "Tenant key config lookup failed for tenant %d, using platform anthropic: %s",
+            tenant_id, exc,
+        )
         return "anthropic", config.ANTHROPIC_API_KEY
 
     provider = keys_dict.get("llm_provider") or "anthropic"
@@ -77,7 +88,11 @@ async def get_tenant_llm_config(tenant_id: int, db) -> tuple[str, str | None]:
 
     try:
         api_key = await Store.decrypt_tenant_key(db, tenant_id, store_key)
-    except Exception:
+    except Exception as exc:
+        _log.warning(
+            "BYO key decryption failed for tenant %d provider %s: %s",
+            tenant_id, store_key, exc,
+        )
         api_key = None
 
     if not api_key and provider == "anthropic":
@@ -120,9 +135,6 @@ async def structured_call(
     call_meta: dict | None = None,
 ) -> T:
     import asyncio
-    import logging
-
-    _log = logging.getLogger(__name__)
 
     tool, system_param = _build_tool_and_system(system, schema, tool_name, tool_description)
 
@@ -227,9 +239,6 @@ async def submit_and_await_batch(
     Token usage is recorded post-hoc per succeeded message.
     """
     import asyncio
-    import logging
-
-    _log = logging.getLogger(__name__)
 
     if not requests:
         return {}
@@ -257,9 +266,6 @@ async def record_batch_usage(messages, tenant_id: int | None) -> None:
     """Record token usage for a list of succeeded batch messages."""
     if tenant_id is None:
         return
-    import logging
-
-    _log = logging.getLogger(__name__)
     total = 0
     for msg in messages:
         usage = getattr(msg, "usage", None)

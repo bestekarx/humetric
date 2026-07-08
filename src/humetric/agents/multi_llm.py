@@ -96,11 +96,15 @@ async def _call_openai(
 
 # ── Google AI (Gemini) ─────────────────────────────────────────────────────
 
-# TODO(post-beta, Bug #3): genai.configure() mutates global SDK state, so
-# concurrent requests can leak one tenant's API key into another's call. Before
-# enabling the google provider, migrate to the client-based `google-genai` SDK
-# (genai.Client(api_key=...)) so each call carries its own credential. Currently
-# unreachable under the beta lock (anthropic-only) — kept for reference.
+# genai.configure() mutates global SDK state, so without a lock concurrent
+# requests could leak one tenant's API key into another's call. _google_lock
+# serializes configure→generate as a correctness guarantee; it also serializes
+# all Google calls, so before opening this provider to heavy traffic migrate
+# to the client-based `google-genai` SDK (genai.Client(api_key=...)) where
+# each call carries its own credential.
+_google_lock = asyncio.Lock()
+
+
 async def _call_google(
     *,
     model: str,
@@ -118,22 +122,22 @@ async def _call_google(
             "Install it with: pip install google-generativeai>=0.8"
         )
 
-    genai.configure(api_key=api_key)
     user_text = user if isinstance(user, str) else json.dumps(user, ensure_ascii=False)
     enhanced_system = _schema_injection(system, schema)
 
-    model_obj = genai.GenerativeModel(
-        model_name=model,
-        system_instruction=enhanced_system,
-        generation_config=genai.GenerationConfig(
-            response_mime_type="application/json",
-            temperature=0,
-            max_output_tokens=config.MAX_TOKENS,
-        ),
-    )
-
     t0 = time.perf_counter()
-    resp = await asyncio.to_thread(lambda: model_obj.generate_content(user_text))
+    async with _google_lock:
+        genai.configure(api_key=api_key)
+        model_obj = genai.GenerativeModel(
+            model_name=model,
+            system_instruction=enhanced_system,
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                temperature=0,
+                max_output_tokens=config.MAX_TOKENS,
+            ),
+        )
+        resp = await asyncio.to_thread(lambda: model_obj.generate_content(user_text))
     latency_ms = int((time.perf_counter() - t0) * 1000)
 
     total_tokens = 0
