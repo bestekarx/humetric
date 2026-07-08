@@ -1,6 +1,25 @@
 # HuMetric — Claude Code Guide
 
+> ⚠️ **CRITICAL RULE — THIS IS AN OPEN SOURCE PROJECT.** Never commit personal
+> information, server addresses/IPs, hostnames, credentials, API keys, tokens,
+> or any other secret into any file tracked by git — including code, configs,
+> docs, commit messages, and this file. This applies to every new feature,
+> script, or MCP integration (e.g. Dokploy) added to the repo. Secrets and
+> environment-specific values belong in `.env` (gitignored) or local/user-scope
+> tool config (e.g. `claude mcp add --scope local`), never in project-scope
+> files like `.mcp.json` or anything committed to the repository.
+
 Domain-agnostic entity intelligence platform. Turns unstructured text signals into calibrated, temporally-decaying entity metrics using a multi-agent LLM pipeline.
+
+> ℹ️ **HuMetric is the open-source backend tool only — it does NOT contain a
+> website or dashboard UI.** The customer-facing website and dashboard live in a
+> **separate project** at `../humetric-site` (repo:
+> `/Users/bestekarx/RiderProjects/humetric-site`), which is a standalone
+> Node/Express + React/Vite app that talks to this API over HTTP (`/v1/*`). Do
+> not add static-site, landing-page, or dashboard-frontend files to this
+> repository. Frontend/site changes belong in the `humetric-site` project. This
+> repo only exposes the HTTP API (e.g. `/v1/register`, `/v1/login`,
+> `/v1/api-keys`, `/v1/tenant/dashboard`) that the site consumes.
 
 ## Quick orientation
 
