@@ -12,6 +12,9 @@ Create Date: 2026-06-04
 
 from __future__ import annotations
 
+import os
+import re
+
 import sqlalchemy as sa
 from alembic import op
 from pgvector.sqlalchemy import Vector
@@ -164,10 +167,22 @@ def upgrade() -> None:
     )
 
     # --- RLS: humetric_app roll ve tenant_isolation policy ---
+    # Password comes from HUMETRIC_APP_DB_PASSWORD; the weak default is for
+    # local dev only. Production MUST set this env var on the migrate step,
+    # or rotate afterwards with scripts/create_app_role.sql.
+    # Strict charset: the value is embedded in a $$-quoted SQL block here and
+    # in DATABASE_URL_APP without URL-encoding, so anything beyond URL-safe
+    # characters is both an injection hazard and a broken connection string.
+    app_password = os.environ.get("HUMETRIC_APP_DB_PASSWORD", "humetric_app")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", app_password):
+        raise ValueError(
+            "HUMETRIC_APP_DB_PASSWORD must be 1-128 chars of [A-Za-z0-9_-] "
+            "(URL-safe, no quoting needed)."
+        )
     op.execute(
         "DO $$ BEGIN "
         "  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'humetric_app') THEN "
-        "    CREATE ROLE humetric_app WITH LOGIN PASSWORD 'humetric_app' NOSUPERUSER NOBYPASSRLS; "
+        f"    CREATE ROLE humetric_app WITH LOGIN PASSWORD '{app_password}' NOSUPERUSER NOBYPASSRLS; "
         "  END IF; "
         "END $$"
     )

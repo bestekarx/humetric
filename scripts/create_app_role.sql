@@ -9,9 +9,13 @@
 -- "role already exists") -- it only rotates the password and re-asserts
 -- the grants, which is safe to run whether or not the role pre-exists.
 --
--- Usage: psql "$DATABASE_URL" -f scripts/create_app_role.sql
--- Replace <STRONG_PASSWORD> before running, then set that same value as
--- APP_DB_PASSWORD in the Dokploy humetric-api compose env.
+-- Usage (psql needs a plain postgresql:// URL, not SQLAlchemy's
+-- postgresql+psycopg:// form):
+--   psql "postgresql://<admin_user>:<admin_password>@<host>:<port>/humetric" \
+--     -f scripts/create_app_role.sql
+-- Replace <STRONG_PASSWORD> before running (use [A-Za-z0-9_-] only — the
+-- value is embedded in DATABASE_URL_APP without URL-encoding), then set the
+-- same value as APP_DB_PASSWORD in the Dokploy compose env.
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'humetric_app') THEN
