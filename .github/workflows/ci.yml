@@ -50,8 +50,39 @@ jobs:
           VOYAGE_API_KEY: pa-test
           HUMETRIC_AUTH_SECRET: test-secret
 
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: humetric
+          POSTGRES_PASSWORD: humetric
+          POSTGRES_DB: humetric
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev]"
+      - name: Verify migrations (upgrade head, downgrade -1, re-upgrade)
+        run: |
+          alembic upgrade head
+          alembic downgrade -1
+          alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+psycopg://humetric:humetric@localhost:5432/humetric
+          HUMETRIC_AUTH_SECRET: test-secret
+          ANTHROPIC_API_KEY: sk-test
+          VOYAGE_API_KEY: pa-test
+
   build:
-    needs: [lint, test]
+    needs: [lint, test, migrations]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
