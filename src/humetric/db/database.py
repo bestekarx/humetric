@@ -118,13 +118,29 @@ async def get_tenant_db(api_key_id: int, tenant_id: int) -> AsyncGenerator[Async
     """Async session with tenant context applied.
 
     The tenant_id is known once the API key is resolved. This session sets
-    the PostgreSQL GUC `app.tenant_id`; RLS policies read it. The GUC is
-    reset when the session closes (no connection-pool leakage).
+    the PostgreSQL GUC `app.tenant_id`; RLS policies read it.
+
+    SQLAlchemy's async Session releases its DBAPI connection back to the pool
+    on every commit() and checks out a (possibly different) connection for the
+    next transaction. A single request can span several commits (e.g. a
+    create + a separate audit-log write), so setting the GUC once at session
+    start is not enough — an `after_begin` listener re-applies it whenever a
+    new transaction starts on this session, on whichever connection it gets.
+    The GUC is reset when the session closes (no connection-pool leakage).
 
     set_config() is called with a parametrized query — safe from SQL injection.
     """
     factory = get_async_session_factory()
     async with factory() as session:
+        sync_session = session.sync_session
+
+        def _apply_tenant_context(_session, _transaction, connection):
+            connection.execute(
+                text("SELECT set_config('app.tenant_id', :t, false)"),
+                {"t": str(tenant_id)},
+            )
+
+        event.listen(sync_session, "after_begin", _apply_tenant_context)
         try:
             await session.execute(
                 text("SELECT set_config('app.tenant_id', :t, false)"),
@@ -132,6 +148,7 @@ async def get_tenant_db(api_key_id: int, tenant_id: int) -> AsyncGenerator[Async
             )
             yield session
         finally:
+            event.remove(sync_session, "after_begin", _apply_tenant_context)
             try:
                 await session.execute(
                     text("SELECT set_config('app.tenant_id', '', false)")
