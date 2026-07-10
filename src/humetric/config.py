@@ -59,8 +59,8 @@ DEEPSEEK_AGENT_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_AGENT_MODEL", "deepseek
 DEEPSEEK_CURATOR_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_CURATOR_MODEL", "deepseek-chat")
 DEEPSEEK_RANKER_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_RANKER_MODEL", "deepseek-chat")
 
-# BYOK: beta'da yalnizca anthropic acik; virgullu listeyle genisletilir.
-# Ileride 4 saglayiciyi acmak tek env degiskeni:
+# BYOK: beta allows anthropic only; expand with comma-separated list.
+# To enable all 4 providers with a single env var:
 # HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic,openai,google,deepseek
 ENABLED_LLM_PROVIDERS = [
     p.strip()

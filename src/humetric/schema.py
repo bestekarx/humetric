@@ -384,7 +384,7 @@ class PackDetail(PackRead):
 class PackWizardRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    text: str = Field(min_length=10, max_length=10000)
+    text: str = Field(min_length=10, max_length=100000)
     entity_type_hint: str | None = Field(
         default=None,
         max_length=64,

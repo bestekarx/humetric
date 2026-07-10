@@ -146,7 +146,7 @@ pip install -e ".[dev]"
 alembic upgrade head
 
 # Seed a default tenant with an API key
-python -m humetric.seed --tenant default --ad "Default Tenant" --api-key admin
+python -m humetric.seed --tenant default --name "Default Tenant" --api-key admin
 
 # Start the API server
 uvicorn humetric.api:app --reload --port 8002

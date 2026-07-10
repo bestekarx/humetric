@@ -33,13 +33,6 @@ from .middleware.metrics import PrometheusMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
 from .services.captcha_service import verify_captcha
 from .services.email_service import send_verification_email, send_welcome_email
-from .services.stripe_service import (
-    create_checkout_session,
-    create_customer,
-    create_customer_portal_session,
-    handle_webhook,
-    verify_webhook_signature,
-)
 from .services.usage_service import (
     record_signal,
 )
@@ -1386,7 +1379,11 @@ async def tenant_dashboard(
 
     portal_url = None
     if tenant.stripe_customer_id:
-        portal_url = await create_customer_portal_session(tenant.stripe_customer_id)
+        try:
+            from .services.stripe_service import create_customer_portal_session
+            portal_url = await create_customer_portal_session(tenant.stripe_customer_id)
+        except ImportError:
+            pass
 
     return TenantDashboardResponse(
         tenant_id=tenant.id,
@@ -1434,6 +1431,8 @@ async def billing_checkout(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    from .services.stripe_service import create_checkout_session, create_customer
+
     if tier not in ("pro", "enterprise"):
         raise HTTPException(status_code=400, detail=error_envelope("validation_error", "Tier must be 'pro' or 'enterprise'").model_dump())
 
@@ -1456,6 +1455,8 @@ async def billing_checkout(
 
 @app.post(f"{V1_PREFIX}/billing/webhook", tags=["Billing"])
 async def billing_webhook(request: Request):
+    from .services.stripe_service import handle_webhook, verify_webhook_signature
+
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature", "")
 
