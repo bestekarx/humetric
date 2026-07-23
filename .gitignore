@@ -19,3 +19,6 @@ build/
 report.json
 claude_desktop_config.json
 lakehouse/
+
+# Local Claude Code notes (server IPs etc.) - never commit
+CLAUDE.local.md

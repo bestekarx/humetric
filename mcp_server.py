@@ -25,8 +25,7 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
-from mcp.server import Server, NotificationOptions
-from mcp.server.models import InitializationCapabilities
+from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
@@ -206,11 +205,7 @@ async def run_stdio():
         await server.run(
             read_stream,
             write_stream,
-            InitializationCapabilities(
-                sampling=None,
-                experimental=None,
-                roots=None,
-            ),
+            server.create_initialization_options(),
         )
 
 
