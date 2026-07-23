@@ -111,8 +111,13 @@ async def _persist_signal_result(
     signal completed. Shared by the real-time worker and the batch worker."""
     entity_id = entity.id
     skipped_sensitive: list[str] = []
+    existing_by_key = {m.metric_key: m for m in existing_metrics}
+    written_source_counts: dict[str, int] = {}
 
     for fm in final_metrics:
+        prior = existing_by_key.get(fm.metric_key)
+        source_count = (prior.source_count + 1) if prior else 1
+
         metric_def = _find_metric_def(pack_def, fm.metric_key)
         if metric_def and metric_def.get("sensitive"):
             consent_scope = metric_def.get("requires_consent_scope")
@@ -143,7 +148,7 @@ async def _persist_signal_result(
             "metric_key": fm.metric_key,
             "value": fm.value,
             "confidence": fm.confidence,
-            "source_count": 1,
+            "source_count": source_count,
             "signal_id": task.signal_id,
             "trace_data": trace,
             "input_hash": input_hash,
@@ -153,6 +158,7 @@ async def _persist_signal_result(
             "extraction_raw": {"extracted": extracted_entries},
             "review_status": "pending_review" if fm.needs_review else None,
         })
+        written_source_counts[fm.metric_key] = source_count
 
     embed_text = _build_embed_text_safe(entity, existing_metrics, pack_def)
     try:
@@ -167,11 +173,12 @@ async def _persist_signal_result(
             "metric_key": fm.metric_key,
             "value": fm.value,
             "confidence": fm.confidence,
-            "source_count": 1,
+            "source_count": written_source_counts[fm.metric_key],
             "source_signal_id": task.signal_id,
             "needs_review": fm.needs_review,
         }
         for fm in final_metrics
+        if fm.metric_key in written_source_counts
     ]
 
     await Store.update_signal_status(
