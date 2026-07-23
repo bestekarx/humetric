@@ -45,6 +45,7 @@ from .schema import (
     ConsentCreate,
     ConsentRead,
     EntityCreate,
+    EntityListResponse,
     EntityMetricRead,
     EntityMetricsResponse,
     EntityRead,
@@ -267,6 +268,61 @@ async def create_entity(
         created_at=entity.created_at,
         updated_at=entity.updated_at,
     )
+
+
+# ── GET /v1/entities ─────────────────────────────────────────
+
+@app.get(
+    f"{V1_PREFIX}/entities",
+    tags=["Entities"],
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+    },
+)
+async def list_entities(
+    request: Request,
+    entity_type: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    _require_scope(request, "entities:read")
+    tenant_id = request.state.tenant_id
+
+    if limit > 100:
+        limit = 100
+
+    rows = await Store.list_entities(db, tenant_id, entity_type=entity_type, limit=limit, offset=offset)
+
+    from sqlalchemy import func, select as _select
+    from .db.models import Entity as _Entity
+    count_q = _select(func.count()).select_from(_Entity).where(_Entity.tenant_id == tenant_id)
+    if entity_type:
+        count_q = count_q.where(_Entity.entity_type == entity_type)
+    total = await db.scalar(count_q) or 0
+
+    items = []
+    for entity in rows:
+        metrics = await Store.get_entity_metrics(db, entity.id, tenant_id)
+        metric_dicts = [_metric_row_to_read(m) for m in metrics]
+        pack = await Store.get_active_pack_for_type(db, tenant_id, entity.entity_type)
+        metric_dicts = await kvkk.filter_sensitive_metrics(
+            metric_dicts, getattr(request.state, "scopes", []),
+            pack=pack.definition if pack else None,
+            db=db, entity_id=entity.id, tenant_id=tenant_id,
+        )
+        items.append(EntityRead(
+            id=entity.id,
+            entity_type=entity.entity_type,
+            fields=entity.fields,
+            free_text=entity.free_text,
+            status=entity.status,
+            metrics=[EntityMetricRead(**m) for m in metric_dicts],
+            created_at=entity.created_at,
+            updated_at=entity.updated_at,
+        ))
+
+    return EntityListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 # ── GET /v1/entities/{id} ─────────────────────────────────────

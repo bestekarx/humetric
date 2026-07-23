@@ -138,9 +138,9 @@ TOOL_DEFINITIONS = [
                     "type": "integer",
                     "description": "Sayfa boyutu (default: 20, max: 100)",
                 },
-                "cursor": {
-                    "type": "string",
-                    "description": "Sonraki sayfa cursor",
+                "offset": {
+                    "type": "integer",
+                    "description": "Atlanacak kayit sayisi (sayfalama icin)",
                 },
             },
         },
@@ -186,8 +186,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 params.append(f"entity_type={arguments['entity_type']}")
             if arguments.get("limit"):
                 params.append(f"limit={arguments['limit']}")
-            if arguments.get("cursor"):
-                params.append(f"cursor={arguments['cursor']}")
+            if arguments.get("offset"):
+                params.append(f"offset={arguments['offset']}")
             qs = "&".join(params)
             path = f"/v1/entities?{qs}" if qs else "/v1/entities"
             result = await _api_request("GET", path)

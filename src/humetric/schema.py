@@ -165,6 +165,13 @@ class EntityMetricsResponse(BaseModel):
     metric_count: int
 
 
+class EntityListResponse(BaseModel):
+    items: list[EntityRead]
+    total: int
+    limit: int
+    offset: int
+
+
 # ── Signal (Spec 022) ─────────────────────────────────────────
 
 class SignalCreate(BaseModel):
