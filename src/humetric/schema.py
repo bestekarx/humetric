@@ -78,6 +78,7 @@ class ErrorCode(str, Enum):
     captcha_failed = "captcha_failed"
     cannot_revoke_self = "cannot_revoke_self"
     cannot_revoke_last_key = "cannot_revoke_last_key"
+    metric_not_found = "metric_not_found"
 
 
 # ── Tenant ─────────────────────────────────────────────────────
@@ -163,6 +164,23 @@ class EntityMetricsResponse(BaseModel):
     entity_id: str
     metrics: list[EntityMetricRead]
     metric_count: int
+
+
+class MetricExplanation(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    metric_key: str
+    value: float
+    confidence: float
+    effective_confidence: float | None = Field(default=None, validation_alias=AliasChoices("effective_confidence", "effectiveConfidence"))
+    source_count: int = Field(default=1, validation_alias=AliasChoices("source_count", "sourceCount"))
+    last_updated: datetime | None = Field(default=None, validation_alias=AliasChoices("last_updated", "lastUpdated"))
+    source_signal_id: str | None = Field(default=None, validation_alias=AliasChoices("source_signal_id", "sourceSignalId"))
+    needs_review: bool = Field(default=False, validation_alias=AliasChoices("needs_review", "needsReview"))
+    extracted: list[ExtractedMetric] = Field(default_factory=list)
+    extract_model: str | None = Field(default=None, validation_alias=AliasChoices("extract_model", "extractModel"))
+    curator_model: str | None = Field(default=None, validation_alias=AliasChoices("curator_model", "curatorModel"))
+    note: str = "Gerekçe yalnızca en son işlenen sinyale aittir."
 
 
 class EntityListResponse(BaseModel):

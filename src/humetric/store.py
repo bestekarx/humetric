@@ -116,6 +116,19 @@ class Store:
         return list(result.scalars().all())
 
     @staticmethod
+    async def get_metric_with_trace(
+        db: AsyncSession, entity_id: str, tenant_id: int, metric_key: str,
+    ) -> EntityMetric | None:
+        result = await db.execute(
+            select(EntityMetric).where(
+                EntityMetric.entity_id == entity_id,
+                EntityMetric.tenant_id == tenant_id,
+                EntityMetric.metric_key == metric_key,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
     async def upsert_metric(db: AsyncSession, data: dict) -> EntityMetric:
         entity_id = data["entity_id"]
         metric_key = data["metric_key"]

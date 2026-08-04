@@ -50,6 +50,8 @@ from .schema import (
     EntityMetricsResponse,
     EntityRead,
     ErrorResponse,
+    ExtractedMetric,
+    MetricExplanation,
     PackCreate,
     PackDefinition,
     PackDetail,
@@ -406,6 +408,73 @@ async def get_entity_metrics_endpoint(
         entity_id=entity_id,
         metrics=[EntityMetricRead(**m) for m in metric_dicts],
         metric_count=len(metric_dicts),
+    )
+
+
+# ── GET /v1/entities/{id}/metrics/{key}/explain ────────────────
+
+@app.get(
+    f"{V1_PREFIX}/entities/{{entity_id}}/metrics/{{metric_key}}/explain",
+    response_model=MetricExplanation,
+    tags=["Entities"],
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+        404: {"model": ErrorResponse, "description": "Entity or metric not found"},
+    },
+)
+async def explain_metric(
+    entity_id: str,
+    metric_key: str,
+    request: Request,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    _require_scope(request, "entities:read")
+    tenant_id = request.state.tenant_id
+    entity = await Store.get_entity(db, entity_id, tenant_id)
+    if not entity:
+        raise HTTPException(
+            status_code=404,
+            detail=error_envelope("entity_not_found", f"Entity not found: {entity_id}").model_dump(),
+        )
+
+    pack = await Store.get_active_pack_for_type(db, tenant_id, entity.entity_type)
+
+    metric = await Store.get_metric_with_trace(db, entity_id, tenant_id, metric_key)
+    if not metric:
+        raise HTTPException(
+            status_code=404,
+            detail=error_envelope("metric_not_found", f"Metric not found: {metric_key}").model_dump(),
+        )
+
+    metric_dict = _metric_row_to_read(metric)
+    visible = await kvkk.filter_sensitive_metrics(
+        [metric_dict], getattr(request.state, "scopes", []),
+        pack=pack.definition if pack else None,
+        db=db, entity_id=entity_id, tenant_id=tenant_id,
+    )
+    if not visible:
+        # KVKK: hassas ve gizli bir metrik için varlığını sızdırmamak amacıyla 404
+        # (403 değil).
+        raise HTTPException(
+            status_code=404,
+            detail=error_envelope("metric_not_found", f"Metric not found: {metric_key}").model_dump(),
+        )
+
+    trace_data = metric.trace_data or {}
+    extracted_raw = trace_data.get("extracted", []) or []
+
+    return MetricExplanation(
+        metric_key=metric.metric_key,
+        value=metric.value,
+        confidence=metric.confidence,
+        effective_confidence=metric_dict.get("effective_confidence"),
+        source_count=metric.source_count,
+        last_updated=metric.last_updated,
+        source_signal_id=metric.signal_id,
+        needs_review=trace_data.get("needs_review", False),
+        extracted=[ExtractedMetric(**e) for e in extracted_raw],
+        extract_model=trace_data.get("extract_model"),
+        curator_model=trace_data.get("curator_model"),
     )
 
 
