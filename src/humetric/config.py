@@ -178,6 +178,11 @@ FREE_TIER_SIGNAL_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_SIGNAL_LIMIT", "
 FREE_TIER_ENTITY_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_ENTITY_LIMIT", "10"))
 FREE_TIER_PACK_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_PACK_LIMIT", "1"))
 
+# Self-service Pro trial: length in calendar months and how often the worker
+# sweeps for trials that are due to expire.
+TRIAL_PERIOD_MONTHS = int(os.environ.get("HUMETRIC_TRIAL_PERIOD_MONTHS", "3"))
+TRIAL_SWEEP_INTERVAL_S = float(os.environ.get("HUMETRIC_TRIAL_SWEEP_INTERVAL_S", "3600"))
+
 
 # Analytics lakehouse export
 EXPORT_ENABLED = os.environ.get("HUMETRIC_EXPORT_ENABLED", "false").lower() == "true"

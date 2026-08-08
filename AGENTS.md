@@ -83,7 +83,7 @@ All function signatures must be annotated. Use `from __future__ import annotatio
 | Command | What it does |
 |---------|-------------|
 | `uvicorn humetric.api:app --reload --port 8002` | Start API server (dev) |
-| `python -m humetric.seed --tenant <id> --ad "<name>" --api-key <key>` | Seed tenant + API key |
+| `python -m humetric.seed --tenant <id> --name "<name>" --api-key <key>` | Seed tenant + API key |
 | `python worker.py` | Start background signal processor |
 | `alembic upgrade head` | Apply all pending migrations |
 | `alembic revision --autogenerate -m "<desc>"` | Generate a new migration |

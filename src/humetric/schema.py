@@ -618,6 +618,23 @@ class TenantDashboardResponse(BaseModel):
     usage_current_month: dict = {}
     limits: dict = {}
     stripe_customer_portal_url: str | None = None
+    trial_status: str = "none"
+    trial_started_at: str | None = None
+    trial_ends_at: str | None = None
+    trial_available: bool = False
+    trial_days_left: int | None = None
+
+
+class StartTrialResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    tenant_id: int
+    tier: str
+    trial_status: str
+    trial_started_at: str | None = None
+    trial_ends_at: str | None = None
+    trial_days_left: int | None = None
+    message: str = "Pro trial started."
 
 
 class RotateApiKeyResponse(BaseModel):

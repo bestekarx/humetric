@@ -68,8 +68,14 @@ class BillingGuardMiddleware(BaseHTTPMiddleware):
                     {"t": str(tenant_id)},
                 )
 
+                from ..services.trial_service import effective_tier
+
                 tenant = await db.get(Tenant, tenant_id)
-                if not tenant or tenant.tier != "free":
+                if not tenant:
+                    return await call_next(request)
+                # An expired-but-not-yet-swept Pro trial counts as free here.
+                tier = effective_tier(tenant.tier, tenant.trial_status, tenant.trial_ends_at)
+                if tier != "free":
                     return await call_next(request)
 
                 metric_key, limit = limit_info

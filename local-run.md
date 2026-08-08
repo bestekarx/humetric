@@ -3,9 +3,13 @@
 Bu doküman **iki ayrı repoyu** birlikte localde ayağa kaldırmayı anlatır:
 
 - **`humetric`** (bu repo) — açık kaynak backend API + worker. UI/site içermez.
-- **`humetric-site`** (`/Users/bestekarx/RiderProjects/humetric-site`) — ayrı
-  proje, dashboard/website. Node/Express backend + React/Vite frontend.
-  humetric'e HTTP üzerinden (`/v1/*`) bağlanır.
+- **`humetric-site`** (bu reponun yanına, `../humetric-site` olarak checkout
+  edilir) — ayrı proje, dashboard/website. Node/Express backend + React/Vite
+  frontend. humetric'e HTTP üzerinden (`/v1/*`) bağlanır.
+
+> Aşağıdaki komutlar bu reponun kökünden çalıştırılır. `$SITE` ile
+> `humetric-site` checkout'unuzun yolunu kastediyoruz (ör. `export
+> SITE=../humetric-site`).
 
 Site kodu bu repoda yaşamaz; değişiklikler `humetric-site` projesinde yapılır.
 Detay için `CLAUDE.md`'deki proje ayrımı notuna bakın.
@@ -56,7 +60,6 @@ open -a Docker
 ### 2. Veritabanı (pgvector, port 5434)
 
 ```bash
-cd /Users/bestekarx/RiderProjects/humetric
 docker compose up -d db
 ```
 
@@ -82,7 +85,6 @@ bildirir.
 ### 4. humetric API (host, hot-reload)
 
 ```bash
-cd /Users/bestekarx/RiderProjects/humetric
 .venv/bin/uvicorn humetric.api:app --host 0.0.0.0 --port 8002 --reload
 ```
 
@@ -92,7 +94,6 @@ Swagger: http://localhost:8002/docs
 ### 5. humetric worker (host, ayrı terminal)
 
 ```bash
-cd /Users/bestekarx/RiderProjects/humetric
 .venv/bin/python -m humetric.worker
 ```
 
@@ -102,7 +103,7 @@ Signal → metrik pipeline'ını işler (extractor → curator, Anthropic + Voya
 ### 6. humetric-site backend (Express, port 3001)
 
 ```bash
-cd /Users/bestekarx/RiderProjects/humetric-site
+cd $SITE
 npm run dev --prefix backend
 ```
 
@@ -113,7 +114,7 @@ humetric API'ye proxy yapar (`/register`, `/login`, `/api-keys`,
 ### 7. humetric-site frontend (Vite, port 5173)
 
 ```bash
-cd /Users/bestekarx/RiderProjects/humetric-site
+cd $SITE
 npm run dev --prefix frontend
 ```
 
@@ -137,7 +138,6 @@ Repo, register → login → API key → LLM pack wizard → signal → worker �
 → query akışını baştan sona sınayan bir smoke test harness'i içerir:
 
 ```bash
-cd /Users/bestekarx/RiderProjects/humetric
 .venv/bin/python -m humetric_test --scenario beta_smoke --base-url http://localhost:8002/v1 --verbose
 ```
 

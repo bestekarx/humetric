@@ -331,6 +331,27 @@ async def _export_scheduler(factory) -> None:
             _log.exception("Export scheduler error: %s", exc)
 
 
+async def _trial_expiry_scheduler(factory) -> None:
+    """Süresi dolan Pro denemelerini periyodik olarak `free` seviyesine düşür.
+
+    TRIAL_SWEEP_INTERVAL_S'de bir çalışır; admin (RLS-bypass) session ile tüm
+    tenant'ları tarar. Süpürme kaçsa bile dashboard okuması aynı düşürmeyi
+    tembel olarak uygular, yani deneme hiçbir koşulda uzamaz.
+    """
+    from .services.trial_service import expire_due_trials
+
+    _log.info("Trial expiry scheduler started (interval=%.0fs)", config.TRIAL_SWEEP_INTERVAL_S)
+    while _running:
+        try:
+            async with factory() as db:
+                count = await expire_due_trials(db)
+                if count:
+                    _log.info("Trial sweep downgraded %d tenant(s) to free", count)
+        except Exception as exc:
+            _log.exception("Trial expiry scheduler error: %s", exc)
+        await asyncio.sleep(config.TRIAL_SWEEP_INTERVAL_S)
+
+
 async def main():
     """Worker main loop."""
     _log.info("Worker starting. Poll interval: %.1fs, batch size: %d, max retries: %d",
@@ -349,6 +370,8 @@ async def main():
     if config.EXPORT_ENABLED:
         scheduler_task = asyncio.create_task(_export_scheduler(factory))
         _log.info("Nightly export scheduler enabled (hour=%d UTC)", config.EXPORT_HOUR_UTC)
+
+    trial_task = asyncio.create_task(_trial_expiry_scheduler(factory))
 
     try:
         while _running:
@@ -371,12 +394,13 @@ async def main():
             if _running:
                 await asyncio.sleep(config.WORKER_POLL_INTERVAL_S)
     finally:
-        if scheduler_task is not None:
-            scheduler_task.cancel()
-            try:
-                await scheduler_task
-            except asyncio.CancelledError:
-                pass
+        for bg_task in (scheduler_task, trial_task):
+            if bg_task is not None:
+                bg_task.cancel()
+                try:
+                    await bg_task
+                except asyncio.CancelledError:
+                    pass
 
     _log.info("Worker shutdown complete")
 

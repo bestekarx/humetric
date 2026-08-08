@@ -77,6 +77,16 @@ class Tenant(Base):
     subscription_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    trial_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # none | active | expired | converted
+    trial_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="none"
+    )
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

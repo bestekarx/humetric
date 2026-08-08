@@ -107,4 +107,17 @@ async def handle_webhook(event: stripe.Event, db_session) -> dict[str, Any]:
             )
             await db_session.execute(stmt)
 
+            # A paying customer's trial is over as far as the expiry sweep is
+            # concerned: mark it converted so the sweep never downgrades a
+            # paid tenant back to free when trial_ends_at passes.
+            if tier and tier != "free":
+                await db_session.execute(
+                    update(Tenant)
+                    .where(
+                        Tenant.stripe_customer_id == customer_id,
+                        Tenant.trial_status == "active",
+                    )
+                    .values(trial_status="converted")
+                )
+
     return {"handled": True, "event": event_type, "customer_id": customer_id}
