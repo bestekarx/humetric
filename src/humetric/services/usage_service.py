@@ -72,13 +72,20 @@ async def record_embedding(tenant_id: int) -> None:
 
 async def check_tier_limit(tenant_id: int, metric: str, current_value: int) -> bool:
     """Free tier limit check. True → limit not exceeded, False → limit exceeded."""
+    from .trial_service import effective_tier
+
     def _check():
         engine = get_sync_engine()
         with engine.begin() as conn:
-            tenant = conn.execute(
-                select(Tenant.tier).where(Tenant.id == tenant_id)
-            ).scalar_one_or_none()
-        if not tenant or tenant not in TIER_LIMITS:
+            row = conn.execute(
+                select(Tenant.tier, Tenant.trial_status, Tenant.trial_ends_at)
+                .where(Tenant.id == tenant_id)
+            ).one_or_none()
+        if not row:
+            return True
+        # An expired-but-not-yet-swept trial must not keep granting Pro quota.
+        tenant = effective_tier(row.tier, row.trial_status, row.trial_ends_at)
+        if tenant not in TIER_LIMITS:
             return True
         limit = TIER_LIMITS[tenant].get(metric)
         if limit is None:

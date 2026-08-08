@@ -13,9 +13,8 @@ Domain-agnostic entity intelligence platform. Turns unstructured text signals in
 
 > ℹ️ **HuMetric is the open-source backend tool only — it does NOT contain a
 > website or dashboard UI.** The customer-facing website and dashboard live in a
-> **separate project** at `../humetric-site` (repo:
-> `/Users/bestekarx/RiderProjects/humetric-site`), which is a standalone
-> Node/Express + React/Vite app that talks to this API over HTTP (`/v1/*`). Do
+> **separate project**, checked out alongside this one as `../humetric-site`
+> — a standalone Node/Express + React/Vite app that talks to this API over HTTP (`/v1/*`). Do
 > not add static-site, landing-page, or dashboard-frontend files to this
 > repository. Frontend/site changes belong in the `humetric-site` project. This
 > repo only exposes the HTTP API (e.g. `/v1/register`, `/v1/login`,
@@ -69,7 +68,7 @@ pip install -e ".[dev]"
 alembic upgrade head
 
 # 5. Seed a default tenant
-python -m humetric.seed --tenant default --ad "Default Tenant" --api-key admin
+python -m humetric.seed --tenant default --name "Default Tenant" --api-key admin
 
 # 6. Start the API server
 uvicorn humetric.api:app --reload --port 8002

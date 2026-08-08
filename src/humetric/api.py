@@ -72,6 +72,7 @@ from .schema import (
     AuditLogListResponse,
     AuditLogRead,
     SignalTrace,
+    StartTrialResponse,
     TenantDashboardResponse,
     TenantKeysRead,
     TenantKeysUpdate,
@@ -1480,10 +1481,16 @@ async def tenant_dashboard(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    from .services.trial_service import apply_trial_expiry, trial_info
+
     tenant_id = request.state.tenant_id
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
+
+    # Süresi dolan deneme, worker süpürmesini beklemeden burada düşürülür —
+    # dashboard hiçbir zaman bitmiş bir denemeyi Pro olarak göstermez.
+    await apply_trial_expiry(db, tenant)
 
     today = date.today()
     first_of_month = today.replace(day=1)
@@ -1518,6 +1525,40 @@ async def tenant_dashboard(
         usage_current_month=usage,
         limits=limits,
         stripe_customer_portal_url=portal_url,
+        **trial_info(tenant),
+    ).model_dump()
+
+
+@app.post(f"{V1_PREFIX}/tenant/start-trial", tags=["Tenant"])
+async def start_pro_trial(
+    request: Request,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    """3 aylık ücretsiz Pro denemesini başlat (tenant başına bir kez)."""
+    from .services.trial_service import TrialError, apply_trial_expiry, days_left, start_trial
+
+    tenant_id = request.state.tenant_id
+    tenant = await db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
+
+    await apply_trial_expiry(db, tenant)
+
+    try:
+        tenant = await start_trial(db, tenant)
+    except TrialError as exc:
+        return JSONResponse(
+            status_code=409,
+            content=error_envelope(exc.code, exc.message).model_dump(),
+        )
+
+    return StartTrialResponse(
+        tenant_id=tenant.id,
+        tier=tenant.tier,
+        trial_status=tenant.trial_status,
+        trial_started_at=tenant.trial_started_at.isoformat() if tenant.trial_started_at else None,
+        trial_ends_at=tenant.trial_ends_at.isoformat() if tenant.trial_ends_at else None,
+        trial_days_left=days_left(tenant),
     ).model_dump()
 
 
