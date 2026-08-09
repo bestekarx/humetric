@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models — Humetric Phase 0 (Spec 021) + Signal/UsageRecord (Spec 022) + MetricPack (Spec 023) + Tenant registration/Stripe (Spec 026).
 
-10 tables: tenant, entity, entity_metric, api_key, consent, audit_log, signal, usage_record,
-metric_pack, task.
+11 tables: tenant, entity, entity_metric, entity_metric_history, api_key, consent, audit_log,
+signal, usage_record, metric_pack, task.
 RLS: every tenant-scoped table has a tenant_id FK + RLS policy (defined in migrations).
 """
 
@@ -184,6 +184,58 @@ class EntityMetric(Base):
     )
 
 
+class EntityMetricHistory(Base):
+    """Append-only time series of curated metric values.
+
+    ``entity_metric`` keeps only the current value (unique per
+    tenant/entity/metric_key), so every signal overwrites the previous one.
+    This table records one row per write, giving trend charts, backtests and
+    per-signal contribution analysis something to read.
+
+    ``recorded_at`` is the signal's ``occurred_at`` — when the source text was
+    actually produced — not the ingest time. The ``now()`` server default is a
+    safety net only.
+    """
+
+    __tablename__ = "entity_metric_history"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = _tenant_fk()
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    metric_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    value: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    prev_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    signal_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_span: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "entity_id"],
+            ["entity.tenant_id", "entity.id"],
+            ondelete="CASCADE",
+            name="fk_entity_metric_history_entity",
+        ),
+        CheckConstraint("value BETWEEN -1 AND 1", name="ck_emh_value"),
+        CheckConstraint("confidence BETWEEN 0 AND 1", name="ck_emh_confidence"),
+        CheckConstraint("source_count >= 1", name="ck_emh_source"),
+        Index(
+            "ix_emh_lookup",
+            "tenant_id",
+            "entity_id",
+            "metric_key",
+            "recorded_at",
+        ),
+        Index("ix_emh_signal", "tenant_id", "signal_id"),
+    )
+
+
 class Signal(Base):
     """Signal processing record (Spec 022)."""
     __tablename__ = "signal"
@@ -203,6 +255,9 @@ class Signal(Base):
     pack_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     pack_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # When the source text was actually produced. Nullable so historical rows
+    # stay valid; read paths fall back to created_at.
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
@@ -224,6 +279,7 @@ class Signal(Base):
         Index("ix_signal_entity", "entity_id"),
         Index("ix_signal_tenant", "tenant_id"),
         Index("ix_signal_external_id", "tenant_id", "external_id"),
+        Index("ix_signal_occurred", "tenant_id", "occurred_at"),
     )
 
 

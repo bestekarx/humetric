@@ -10,6 +10,7 @@ export default defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Quickstart', link: '/quickstart' },
       { text: 'API Reference', link: '/api-reference' },
+      { text: 'Architecture', link: '/console-metric-history' },
     ],
     sidebar: {
       '/guide/': [
@@ -20,6 +21,14 @@ export default defineConfig({
             { text: 'Signals', link: '/guide/signals' },
             { text: 'Entities', link: '/guide/entities' },
             { text: 'BYO-Key', link: '/guide/byo-key' },
+          ]
+        }
+      ],
+      '/console-metric-history': [
+        {
+          text: 'Architecture',
+          items: [
+            { text: 'Konsol & Metrik Geçmişi', link: '/console-metric-history' },
           ]
         }
       ]

@@ -92,7 +92,25 @@ async def process_signal_task(db: AsyncSession, task) -> None:
     await _persist_signal_result(
         db, task, entity, extracted, final_metrics,
         extract_meta, curator_meta, existing_metrics, pack_def, input_hash,
+        occurred_at=resolve_occurred_at(task, signal),
     )
+
+
+def resolve_occurred_at(task, signal_row) -> datetime | None:
+    """When the source text was produced, for the metric history timeline.
+
+    The task payload carries it so the worker needs no extra query; the signal
+    row is the fallback. Returning None lets the caller default to now().
+    """
+    raw = (task.payload or {}).get("occurred_at")
+    if raw:
+        if isinstance(raw, datetime):
+            return raw
+        try:
+            return datetime.fromisoformat(str(raw))
+        except ValueError:
+            _log.warning("Unparseable occurred_at %r on task %s", raw, task.id)
+    return getattr(signal_row, "occurred_at", None) if signal_row else None
 
 
 async def _persist_signal_result(
@@ -106,13 +124,18 @@ async def _persist_signal_result(
     existing_metrics,
     pack_def: dict,
     input_hash: str,
+    occurred_at: datetime | None = None,
 ) -> None:
     """Write final metrics (KVKK-gated), re-embed the entity, and mark the
     signal completed. Shared by the real-time worker and the batch worker."""
     entity_id = entity.id
+    recorded_at = occurred_at or datetime.now(timezone.utc)
     skipped_sensitive: list[str] = []
     existing_by_key = {m.metric_key: m for m in existing_metrics}
     written_source_counts: dict[str, int] = {}
+    # Per-metric extractor output, kept so the signal result can carry the
+    # cited span — the trace view highlights it inside the raw text.
+    evidence_by_key: dict[str, dict] = {}
 
     for fm in final_metrics:
         prior = existing_by_key.get(fm.metric_key)
@@ -142,6 +165,24 @@ async def _persist_signal_result(
             "curator_model": curator_meta.get("model"),
             "needs_review": fm.needs_review,
         }
+        # History first: append_metric_history does not commit, so it rides
+        # along in upsert_metric's transaction.
+        first_extracted = extracted_entries[0] if extracted_entries else {}
+        evidence_by_key[fm.metric_key] = first_extracted
+        await Store.append_metric_history(db, {
+            "tenant_id": task.tenant_id,
+            "entity_id": entity_id,
+            "metric_key": fm.metric_key,
+            "value": fm.value,
+            "confidence": fm.confidence,
+            "source_count": source_count,
+            "prev_value": prior.value if prior else None,
+            "signal_id": task.signal_id,
+            "model": extract_meta.get("model"),
+            "reasoning": first_extracted.get("reasoning") or None,
+            "source_span": first_extracted.get("source_span") or None,
+            "recorded_at": recorded_at,
+        })
         await Store.upsert_metric(db, {
             "tenant_id": task.tenant_id,
             "entity_id": entity_id,
@@ -176,6 +217,8 @@ async def _persist_signal_result(
             "source_count": written_source_counts[fm.metric_key],
             "source_signal_id": task.signal_id,
             "needs_review": fm.needs_review,
+            "reasoning": evidence_by_key.get(fm.metric_key, {}).get("reasoning"),
+            "source_span": evidence_by_key.get(fm.metric_key, {}).get("source_span"),
         }
         for fm in final_metrics
         if fm.metric_key in written_source_counts

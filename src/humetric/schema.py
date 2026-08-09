@@ -6,7 +6,7 @@ API responses are in English.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
@@ -160,10 +160,50 @@ class EntityRead(BaseModel):
     updated_at: datetime | None = None
 
 
+class MetricContribution(BaseModel):
+    """One historical write of a metric — what moved the score, and why."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    recorded_at: datetime | None = None
+    value: float
+    prev_value: float | None = None
+    delta: float | None = None
+    confidence: float
+    source_count: int = 1
+    signal_id: str | None = None
+    model: str | None = None
+    reasoning: str | None = None
+    source_span: str | None = None
+
+
+class MetricHistoryPoint(MetricContribution):
+    """A contribution plus today's decayed view of its confidence."""
+
+    effective_confidence: float | None = Field(
+        default=None,
+        validation_alias=AliasChoices("effective_confidence", "effectiveConfidence"),
+    )
+
+
+class MetricHistoryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    entity_id: str
+    metric_key: str
+    points: list[MetricHistoryPoint] = Field(default_factory=list)
+    total: int
+    limit: int
+    offset: int
+
+
 class EntityMetricsResponse(BaseModel):
     entity_id: str
     metrics: list[EntityMetricRead]
     metric_count: int
+    # Only populated when the caller passes ?include_history=true, keyed by
+    # metric_key. Empty otherwise so existing consumers are unaffected.
+    history: dict[str, list[MetricHistoryPoint]] = Field(default_factory=dict)
 
 
 class MetricExplanation(BaseModel):
@@ -180,7 +220,11 @@ class MetricExplanation(BaseModel):
     extracted: list[ExtractedMetric] = Field(default_factory=list)
     extract_model: str | None = Field(default=None, validation_alias=AliasChoices("extract_model", "extractModel"))
     curator_model: str | None = Field(default=None, validation_alias=AliasChoices("curator_model", "curatorModel"))
-    note: str = "Gerekçe yalnızca en son işlenen sinyale aittir."
+    contributions: list[MetricContribution] = Field(default_factory=list)
+    note: str = (
+        "extracted/extract_model alanları yalnızca en son işlenen sinyale aittir; "
+        "önceki sinyallerin katkısı için contributions listesine bakın."
+    )
 
 
 class EntityListResponse(BaseModel):
@@ -200,6 +244,22 @@ class SignalCreate(BaseModel):
     text: str | None = None
     structured: dict | None = None
     external_id: str | None = Field(default=None, max_length=200)
+    # When the source text was actually produced — the timeline axis of the
+    # metric history. Omit for live signals; supply it when backfilling.
+    occurred_at: datetime | None = Field(
+        default=None, validation_alias=AliasChoices("occurred_at", "occurredAt")
+    )
+
+    @field_validator("occurred_at")
+    @classmethod
+    def _validate_occurred_at(cls, v: datetime | None) -> datetime | None:
+        if v is None:
+            return None
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+        if v > datetime.now(timezone.utc):
+            raise ValueError("occurred_at cannot be in the future")
+        return v
 
 
 class SignalResult(BaseModel):
@@ -218,8 +278,36 @@ class SignalStatus(BaseModel):
     status: str
     entity_id: str
     error: str | None = None
+    occurred_at: datetime | None = None
     created_at: datetime | None = None
     processed_at: datetime | None = None
+
+
+class SignalSummary(BaseModel):
+    """List-view row for an entity's signals — no full text, no trace."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    external_id: str | None = None
+    status: str
+    entity_id: str
+    pack_key: str | None = None
+    source: str | None = None
+    text_preview: str | None = None
+    metric_keys: list[str] = Field(default_factory=list)
+    occurred_at: datetime | None = None
+    created_at: datetime | None = None
+    processed_at: datetime | None = None
+
+
+class SignalListResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    items: list[SignalSummary] = Field(default_factory=list)
+    total: int
+    limit: int
+    offset: int
 
 
 class SignalTrace(BaseModel):
@@ -332,6 +420,15 @@ class ConsentRead(BaseModel):
 
 # ── Metric Pack (Spec 023) ──────────────────────────────────────
 
+class PackBand(BaseModel):
+    """A value threshold and the status it maps to, for UI colouring."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    max: float
+    level: str = "good"  # critical | warn | good
+
+
 class PackMetricDef(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -339,6 +436,13 @@ class PackMetricDef(BaseModel):
     label: str
     type: str = "float"
     prompt: str = ""
+    # Presentation hints. All optional with sane defaults, so existing packs
+    # stay valid. `direction` matters: some metrics (e.g. a churn risk score)
+    # are written so that a HIGH value is good, and without this a UI has no
+    # way to know which end to paint red.
+    direction: str = "higher_is_better"  # higher_is_better | lower_is_better
+    unit: str = ""
+    bands: list[PackBand] = Field(default_factory=list)
     default_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
     sensitive: bool = False
     visible_to: list[str] = Field(default_factory=list)
@@ -367,6 +471,34 @@ class PackFieldDef(BaseModel):
     label: str = ""
 
 
+class PackGroup(BaseModel):
+    """A named set of metric keys, rendered as one tab/section."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    label: str
+    metrics: list[str] = Field(default_factory=list)
+
+
+class PackDisplay(BaseModel):
+    """How a generic console should render this pack.
+
+    Every field is optional; a console falls back to defaults (first required
+    field as the title, first few metrics as columns) so packs written before
+    this block still render.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # Which key of entity.fields is the human-readable name. entity.fields is
+    # free-form JSONB, so without this a UI can only show the raw id.
+    title_field: str = ""
+    subtitle_field: str = ""
+    # Metric keys promoted to the list view's columns.
+    primary_metrics: list[str] = Field(default_factory=list)
+    groups: list[PackGroup] = Field(default_factory=list)
+
+
 class PackDefinition(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -377,6 +509,7 @@ class PackDefinition(BaseModel):
     metrics: list[PackMetricDef] = Field(default_factory=list)
     prompts: PackPrompts = Field(default_factory=PackPrompts)
     kvkk: PackKVKK = Field(default_factory=PackKVKK)
+    display: PackDisplay = Field(default_factory=PackDisplay)
 
 
 class PackCreate(BaseModel):

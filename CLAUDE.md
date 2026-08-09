@@ -53,6 +53,18 @@ tests/                 pytest suite — gitignored, local dev only
 
 ## Development setup
 
+> 🚀 **"Run it" / "run it locally" → follow [`LOCAL_RUN.md`](LOCAL_RUN.md).**
+> That file is the canonical recipe for bringing up the **full stack** (Postgres
+> + API + worker + the `../humetric-site` backend/frontend) **without Docker**,
+> using a local Homebrew PostgreSQL 16 + pgvector on port **5433**. Use the
+> Docker steps below only when Docker Desktop is actually running.
+>
+> 🔎 **"Get X from local" / any question about local data → use
+> [`LOCAL_DB.md`](LOCAL_DB.md)** and query directly. It documents both local
+> stores: the humetric Postgres (`localhost:5433/humetric`, `psql`) and the site's
+> SQLite (`../humetric-site/data/humetric.db`, `sqlite3`), plus the RLS caveat.
+> Reads are free; ask before any write.
+
 ```bash
 # 1. Configure environment
 cp .env.example .env

@@ -51,7 +51,10 @@ from .schema import (
     EntityRead,
     ErrorResponse,
     ExtractedMetric,
+    MetricContribution,
     MetricExplanation,
+    MetricHistoryPoint,
+    MetricHistoryResponse,
     PackCreate,
     PackDefinition,
     PackDetail,
@@ -68,7 +71,9 @@ from .schema import (
     ReviewerOverrideResponse,
     RotateApiKeyResponse,
     SignalCreate,
+    SignalListResponse,
     SignalStatus,
+    SignalSummary,
     AuditLogListResponse,
     AuditLogRead,
     SignalTrace,
@@ -101,6 +106,14 @@ app.add_middleware(
 )
 
 V1_PREFIX = "/v1"
+
+# Signal list rows carry a snippet, not the whole text — the trace endpoint
+# serves the full body.
+_SIGNAL_PREVIEW_CHARS = 200
+
+# How many history points ride along when ?include_history=true. Enough for a
+# sparkline; the dedicated history endpoint serves real charts.
+_INLINE_HISTORY_POINTS = 30
 
 
 # ── Tenant session dependency ──────────────────────────────────
@@ -405,10 +418,28 @@ async def get_entity_metrics_endpoint(
         db=db, entity_id=entity_id, tenant_id=tenant_id,
     )
 
+    history: dict[str, list[MetricHistoryPoint]] = {}
+    if include_history:
+        from .decay import decayed_confidence
+
+        for m in metric_dicts:
+            rows, _ = await Store.list_metric_history(
+                db, entity_id, tenant_id, m["metric_key"],
+                limit=_INLINE_HISTORY_POINTS,
+            )
+            history[m["metric_key"]] = [
+                MetricHistoryPoint(
+                    **_history_row_to_contribution(row).model_dump(),
+                    effective_confidence=decayed_confidence(row.confidence, row.recorded_at),
+                )
+                for row in rows
+            ]
+
     return EntityMetricsResponse(
         entity_id=entity_id,
         metrics=[EntityMetricRead(**m) for m in metric_dicts],
         metric_count=len(metric_dicts),
+        history=history,
     )
 
 
@@ -427,9 +458,11 @@ async def explain_metric(
     entity_id: str,
     metric_key: str,
     request: Request,
+    contributions: int = 10,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
     _require_scope(request, "entities:read")
+    contributions = max(0, min(contributions, 100))
     tenant_id = request.state.tenant_id
     entity = await Store.get_entity(db, entity_id, tenant_id)
     if not entity:
@@ -476,7 +509,177 @@ async def explain_metric(
         extracted=[ExtractedMetric(**e) for e in extracted_raw],
         extract_model=trace_data.get("extract_model"),
         curator_model=trace_data.get("curator_model"),
+        contributions=[
+            _history_row_to_contribution(row)
+            for row in await Store.list_metric_contributions(
+                db, entity_id, tenant_id, metric_key, limit=contributions,
+            )
+        ],
     )
+
+
+def _history_row_to_contribution(row) -> MetricContribution:
+    return MetricContribution(
+        recorded_at=row.recorded_at,
+        value=row.value,
+        prev_value=row.prev_value,
+        delta=None if row.prev_value is None else row.value - row.prev_value,
+        confidence=row.confidence,
+        source_count=row.source_count,
+        signal_id=row.signal_id,
+        model=row.model,
+        reasoning=row.reasoning,
+        source_span=row.source_span,
+    )
+
+
+async def _assert_metric_visible(
+    db: AsyncSession, request: Request, entity, metric_key: str, tenant_id: int,
+) -> None:
+    """404 (never 403) when a sensitive metric is hidden — don't leak that it exists."""
+    metric = await Store.get_metric_with_trace(db, entity.id, tenant_id, metric_key)
+    not_found = HTTPException(
+        status_code=404,
+        detail=error_envelope("metric_not_found", f"Metric not found: {metric_key}").model_dump(),
+    )
+    if not metric:
+        raise not_found
+    pack = await Store.get_active_pack_for_type(db, tenant_id, entity.entity_type)
+    visible = await kvkk.filter_sensitive_metrics(
+        [_metric_row_to_read(metric)], getattr(request.state, "scopes", []),
+        pack=pack.definition if pack else None,
+        db=db, entity_id=entity.id, tenant_id=tenant_id,
+    )
+    if not visible:
+        raise not_found
+
+
+# ── GET /v1/entities/{id}/metrics/{key}/history ────────────────
+
+@app.get(
+    f"{V1_PREFIX}/entities/{{entity_id}}/metrics/{{metric_key}}/history",
+    response_model=MetricHistoryResponse,
+    tags=["Entities"],
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+        404: {"model": ErrorResponse, "description": "Entity or metric not found"},
+    },
+)
+async def get_metric_history(
+    entity_id: str,
+    metric_key: str,
+    request: Request,
+    since: datetime | None = None,
+    until: datetime | None = None,
+    limit: int = 200,
+    offset: int = 0,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    """Time series of a metric, oldest first.
+
+    ``confidence`` is the value recorded at the time — the honest line to plot.
+    ``effective_confidence`` applies temporal decay as of *now*, i.e. how much
+    that point is still worth today. They are not interchangeable.
+    """
+    _require_scope(request, "entities:read")
+    tenant_id = request.state.tenant_id
+    if limit > 500:
+        limit = 500
+
+    entity = await Store.get_entity(db, entity_id, tenant_id)
+    if not entity:
+        raise HTTPException(
+            status_code=404,
+            detail=error_envelope("entity_not_found", f"Entity not found: {entity_id}").model_dump(),
+        )
+    await _assert_metric_visible(db, request, entity, metric_key, tenant_id)
+
+    from .decay import decayed_confidence
+
+    rows, total = await Store.list_metric_history(
+        db, entity_id, tenant_id, metric_key,
+        since=since, until=until, limit=limit, offset=offset,
+    )
+    points = []
+    for row in rows:
+        base = _history_row_to_contribution(row)
+        points.append(
+            MetricHistoryPoint(
+                **base.model_dump(),
+                effective_confidence=decayed_confidence(row.confidence, row.recorded_at),
+            )
+        )
+
+    return MetricHistoryResponse(
+        entity_id=entity_id,
+        metric_key=metric_key,
+        points=points,
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
+# ── GET /v1/entities/{id}/signals ─────────────────────────────
+
+@app.get(
+    f"{V1_PREFIX}/entities/{{entity_id}}/signals",
+    response_model=SignalListResponse,
+    tags=["Signals"],
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+        404: {"model": ErrorResponse, "description": "Entity not found"},
+    },
+)
+async def list_entity_signals(
+    entity_id: str,
+    request: Request,
+    status: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    _require_scope(request, "signals:read")
+    tenant_id = request.state.tenant_id
+    if limit > 100:
+        limit = 100
+
+    entity = await Store.get_entity(db, entity_id, tenant_id)
+    if not entity:
+        raise HTTPException(
+            status_code=404,
+            detail=error_envelope("entity_not_found", f"Entity not found: {entity_id}").model_dump(),
+        )
+
+    rows, total = await Store.list_signals_for_entity(
+        db, entity_id, tenant_id, status=status, limit=limit, offset=offset,
+    )
+    items = []
+    for row in rows:
+        structured = row.structured or {}
+        text_value = row.text or ""
+        items.append(
+            SignalSummary(
+                id=row.id,
+                external_id=row.external_id,
+                status=row.status,
+                entity_id=row.entity_id,
+                pack_key=row.pack_key,
+                # Ingest convention: callers put provenance in `structured`.
+                source=structured.get("source") if isinstance(structured, dict) else None,
+                text_preview=text_value[:_SIGNAL_PREVIEW_CHARS] or None,
+                metric_keys=[
+                    m.get("metric_key")
+                    for m in (row.result or {}).get("metrics", [])
+                    if m.get("metric_key")
+                ],
+                occurred_at=row.occurred_at,
+                created_at=row.created_at,
+                processed_at=row.processed_at,
+            )
+        )
+
+    return SignalListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 # ── POST /v1/signals ──────────────────────────────────────────
@@ -545,6 +748,7 @@ async def create_signal(
         "external_id": idempotency_key or body.external_id,
         "pack_key": pack_key,
         "pack_version": pack_version,
+        "occurred_at": body.occurred_at,
     })
 
     await Store.create_task(db, {
@@ -558,6 +762,9 @@ async def create_signal(
             "entity_type": body.entity_type,
             "structured": body.structured or {},
             "pack_definition": pack.definition if pack else {},
+            # Duplicated onto the payload (like text/structured above) so the
+            # worker does not need a second query to timestamp history.
+            "occurred_at": body.occurred_at.isoformat() if body.occurred_at else None,
         },
     })
 
@@ -604,6 +811,7 @@ async def get_signal(
         status=row.status,
         entity_id=row.entity_id,
         error=row.error,
+        occurred_at=row.occurred_at,
         created_at=row.created_at,
         processed_at=row.processed_at,
     )
@@ -633,6 +841,13 @@ async def get_signal_trace(
         )
 
     trace_data = row.result if row.result else {}
+    # The console highlights source_span inside the raw text, so the trace has
+    # to carry the text and its provenance, not just the derived metrics.
+    trace_data["text"] = row.text
+    trace_data["structured"] = row.structured or {}
+    trace_data["status"] = row.status
+    trace_data["occurred_at"] = row.occurred_at.isoformat() if row.occurred_at else None
+    trace_data["created_at"] = row.created_at.isoformat() if row.created_at else None
     entity = await Store.get_entity(db, row.entity_id, tenant_id)
     if entity:
         metrics = await Store.get_entity_metrics(db, row.entity_id, tenant_id)
@@ -1276,17 +1491,12 @@ async def query_entities(
 # ── Helper ─────────────────────────────────────────────────────
 
 def _entity_metric_to_read(m) -> EntityMetricRead:
-    from .decay import decayed_confidence
+    """Typed view of a metric row.
 
-    return EntityMetricRead(
-        metric_key=m.metric_key,
-        value=m.value,
-        confidence=m.confidence,
-        effective_confidence=decayed_confidence(m.confidence, m.last_updated),
-        source_count=m.source_count,
-        last_updated=m.last_updated,
-        source_signal_id=m.signal_id,
-    )
+    Delegates to ``store._metric_row_to_read`` so decay and field selection
+    have exactly one definition.
+    """
+    return EntityMetricRead(**_metric_row_to_read(m))
 
 
 def _find_metric_def(pack_def: dict, metric_key: str) -> dict | None:

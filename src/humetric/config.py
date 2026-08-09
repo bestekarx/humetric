@@ -120,6 +120,15 @@ CURATOR_FAST_PATH_ENABLED = (
 BATCH_SUBMIT_SIZE = int(os.environ.get("HUMETRIC_BATCH_SUBMIT_SIZE", "1000"))
 BATCH_POLL_INTERVAL_S = float(os.environ.get("HUMETRIC_BATCH_POLL_INTERVAL_S", "30"))
 BATCH_RECLAIM_S = float(os.environ.get("HUMETRIC_BATCH_RECLAIM_S", "3600"))
+# Chronological backfill: claim one time window at a time, at most one signal
+# per entity per wave, so each wave sees the previous wave's metrics and the
+# curator actually reconciles. Off by default — arbitrary queue order stays
+# the existing behaviour. Also settable per run with `--weekly`.
+BATCH_CHRONOLOGICAL = (
+    os.environ.get("HUMETRIC_BATCH_CHRONOLOGICAL", "false").lower() == "true"
+)
+# date_trunc unit for the window above: day | week | month.
+BATCH_WINDOW = os.environ.get("HUMETRIC_BATCH_WINDOW", "week")
 
 API_PORT = int(os.environ.get("HUMETRIC_API_PORT", "8002"))
 

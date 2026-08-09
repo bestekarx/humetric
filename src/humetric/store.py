@@ -11,11 +11,26 @@ import logging
 import os as _os
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, config
-from .db.models import ApiKey, AuditLog, Consent, Entity, EntityMetric, MetricPack, Signal, Task, Tenant, UsageRecord
+from .db.models import (
+    ApiKey,
+    AuditLog,
+    Consent,
+    Entity,
+    EntityMetric,
+    EntityMetricHistory,
+    MetricPack,
+    Signal,
+    Task,
+    Tenant,
+    UsageRecord,
+)
+
+# Time buckets the chronological batch claim understands (date_trunc units).
+_BATCH_WINDOW_UNITS = frozenset({"day", "week", "month"})
 
 _log = logging.getLogger(__name__)
 
@@ -154,6 +169,77 @@ class Store:
         await db.commit()
         return metric
 
+    # --- EntityMetricHistory ---
+
+    @staticmethod
+    async def append_metric_history(db: AsyncSession, data: dict) -> None:
+        """Record one point of a metric's time series.
+
+        Deliberately does NOT commit: call this immediately before
+        ``upsert_metric``, whose commit lands both writes in one transaction.
+        """
+        db.add(EntityMetricHistory(**data))
+        await db.flush()
+
+    @staticmethod
+    async def list_metric_history(
+        db: AsyncSession,
+        entity_id: str,
+        tenant_id: int,
+        metric_key: str,
+        *,
+        since: datetime | None = None,
+        until: datetime | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> tuple[list[EntityMetricHistory], int]:
+        """Return (points ordered oldest-first, total matching count)."""
+        from sqlalchemy import func
+
+        conditions = [
+            EntityMetricHistory.tenant_id == tenant_id,
+            EntityMetricHistory.entity_id == entity_id,
+            EntityMetricHistory.metric_key == metric_key,
+        ]
+        if since:
+            conditions.append(EntityMetricHistory.recorded_at >= since)
+        if until:
+            conditions.append(EntityMetricHistory.recorded_at <= until)
+
+        total = await db.scalar(
+            select(func.count()).select_from(EntityMetricHistory).where(*conditions)
+        )
+        result = await db.execute(
+            select(EntityMetricHistory)
+            .where(*conditions)
+            .order_by(EntityMetricHistory.recorded_at.asc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all()), int(total or 0)
+
+    @staticmethod
+    async def list_metric_contributions(
+        db: AsyncSession,
+        entity_id: str,
+        tenant_id: int,
+        metric_key: str,
+        *,
+        limit: int = 10,
+    ) -> list[EntityMetricHistory]:
+        """Most recent history points for a metric, newest first."""
+        result = await db.execute(
+            select(EntityMetricHistory)
+            .where(
+                EntityMetricHistory.tenant_id == tenant_id,
+                EntityMetricHistory.entity_id == entity_id,
+                EntityMetricHistory.metric_key == metric_key,
+            )
+            .order_by(EntityMetricHistory.recorded_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
     # --- Signal (Spec 022) ---
 
     @staticmethod
@@ -173,6 +259,35 @@ class Store:
             )
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def list_signals_for_entity(
+        db: AsyncSession,
+        entity_id: str,
+        tenant_id: int,
+        *,
+        status: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[Signal], int]:
+        """Return (signals newest-first, total matching count)."""
+        from sqlalchemy import desc, func
+
+        conditions = [Signal.tenant_id == tenant_id, Signal.entity_id == entity_id]
+        if status:
+            conditions.append(Signal.status == status)
+
+        total = await db.scalar(
+            select(func.count()).select_from(Signal).where(*conditions)
+        )
+        result = await db.execute(
+            select(Signal)
+            .where(*conditions)
+            .order_by(desc(Signal.created_at))
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(result.scalars().all()), int(total or 0)
 
     @staticmethod
     async def update_signal_status(
@@ -675,6 +790,71 @@ class Store:
         result = await db.execute(
             stmt.order_by(Task.created_at.asc())
             .limit(batch_size)
+            .with_for_update(skip_locked=True)
+        )
+        tasks = list(result.scalars().all())
+        for t in tasks:
+            t.status = "processing"
+            t.started_at = now
+        await db.commit()
+        return tasks
+
+    @staticmethod
+    async def get_next_chronological_batch(
+        db: AsyncSession, *, batch_size: int = 5, window: str = "week",
+    ) -> list[Task]:
+        """Claim the oldest time window of queued signal tasks, one per entity.
+
+        ``get_next_task`` claims by queue order, so one batch can hold several
+        signals for the same entity. Each of them then reads the same
+        pre-batch metric snapshot, finds no history, takes the cold-start fast
+        path, and the writes are last-write-wins — the curator never runs.
+
+        Claiming a single *time window* at a time, and at most one signal per
+        entity within it, makes every wave see the previous wave's results.
+        The curator then genuinely reconciles and the metric history gets one
+        ordered point per window per entity. Signals left over from a window
+        (same entity, same week) are picked up by a later wave, so
+        chronological order is never broken.
+        """
+        if window not in _BATCH_WINDOW_UNITS:
+            raise ValueError(f"Unsupported batch window: {window}")
+
+        now = datetime.now(timezone.utc)
+        occurred = "COALESCE(s.occurred_at, s.created_at)"
+        # `window` is whitelisted above, so interpolating it is safe.
+        candidates = await db.execute(
+            text(
+                f"""
+                WITH ready AS (
+                    SELECT t.id AS task_id,
+                           s.tenant_id,
+                           s.entity_id,
+                           {occurred} AS occurred_at,
+                           date_trunc('{window}', {occurred}) AS bucket
+                    FROM task t
+                    JOIN signal s ON s.id = t.signal_id
+                    WHERE t.status = 'queued'
+                      AND t.task_type = 'signal_process'
+                      AND (t.next_retry_at IS NULL OR t.next_retry_at <= :now)
+                ),
+                oldest AS (SELECT MIN(bucket) AS bucket FROM ready)
+                SELECT DISTINCT ON (r.tenant_id, r.entity_id) r.task_id
+                FROM ready r
+                JOIN oldest o ON r.bucket = o.bucket
+                ORDER BY r.tenant_id, r.entity_id, r.occurred_at ASC
+                LIMIT :limit
+                """
+            ),
+            {"now": now, "limit": batch_size},
+        )
+        task_ids = [row[0] for row in candidates.all()]
+        if not task_ids:
+            return []
+
+        result = await db.execute(
+            select(Task)
+            .where(Task.id.in_(task_ids), Task.status == "queued")
             .with_for_update(skip_locked=True)
         )
         tasks = list(result.scalars().all())

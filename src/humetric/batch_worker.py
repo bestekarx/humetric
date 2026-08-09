@@ -18,9 +18,12 @@ reclaimed on the next start.
 
 Caveat: within a single batch, multiple signals for the *same* entity all see
 the pre-batch snapshot as "no history", so all take the fast-path and
-``upsert_metric`` is last-write-wins (no cross-signal reconciliation). This is
-acceptable for a cold load; for per-signal reconciliation use the real-time
-worker.
+``upsert_metric`` is last-write-wins (no cross-signal reconciliation).
+
+Pass ``--weekly`` to avoid that on historical loads: waves are then claimed one
+time window at a time (by ``signal.occurred_at``) with at most one signal per
+entity per wave, so each wave reconciles against the previous wave's metrics
+and the metric history gets one ordered point per window.
 """
 
 from __future__ import annotations
@@ -38,7 +41,7 @@ from .agents import base, curator, extractor
 from .agents.versioning import hash_prompt, hash_schema, hash_text
 from .schema import CurationResult, ExtractionResult
 from .store import Store
-from .worker import _persist_signal_result, handle_failure
+from .worker import _persist_signal_result, handle_failure, resolve_occurred_at
 
 _log = logging.getLogger(__name__)
 
@@ -101,6 +104,7 @@ async def _prepare_task(db: AsyncSession, task) -> dict | None:
         "pack_def": pack_def,
         "ctx": ctx,
         "input_hash": input_hash,
+        "occurred_at": resolve_occurred_at(task, signal),
         "llm_key": llm_key,
         "extract_system": sys_prompt,
         "extract_user": user_prompt,
@@ -114,14 +118,24 @@ async def _prepare_task(db: AsyncSession, task) -> dict | None:
     }
 
 
-async def run_batch_once(db: AsyncSession) -> int:
+async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> int:
     """Claim one block of queued signal_process tasks and process via batch.
+
+    With ``chronological`` the block is one time window with at most one
+    signal per entity, so waves replay in order and the curator sees real
+    history (see ``Store.get_next_chronological_batch``). Otherwise the
+    original arbitrary queue order is used.
 
     Returns the number of tasks claimed (0 means the queue is empty).
     """
-    tasks = await Store.get_next_task(
-        db, batch_size=config.BATCH_SUBMIT_SIZE, task_types=["signal_process"],
-    )
+    if chronological:
+        tasks = await Store.get_next_chronological_batch(
+            db, batch_size=config.BATCH_SUBMIT_SIZE, window=config.BATCH_WINDOW,
+        )
+    else:
+        tasks = await Store.get_next_task(
+            db, batch_size=config.BATCH_SUBMIT_SIZE, task_types=["signal_process"],
+        )
     if not tasks:
         return 0
     _log.info("Claimed %d signal task(s) for batch", len(tasks))
@@ -229,6 +243,7 @@ async def run_batch_once(db: AsyncSession) -> int:
                 db, t, c["entity"], c["extracted"], c["final_metrics"],
                 c["extract_meta"], c["curator_meta"], c["existing_metrics"],
                 c["pack_def"], c["input_hash"],
+                occurred_at=c["occurred_at"],
             )
             await Store.complete_task(db, t.id)
         except Exception as exc:
@@ -247,11 +262,14 @@ async def run_batch_once(db: AsyncSession) -> int:
     return len(tasks)
 
 
-async def main() -> None:
+async def main(chronological: bool | None = None) -> None:
     config.require_keys()
+    if chronological is None:
+        chronological = config.BATCH_CHRONOLOGICAL
     _log.info(
-        "Batch worker starting. Submit size: %d, poll: %.0fs, reclaim: %.0fs",
+        "Batch worker starting. Submit size: %d, poll: %.0fs, reclaim: %.0fs, mode: %s",
         config.BATCH_SUBMIT_SIZE, config.BATCH_POLL_INTERVAL_S, config.BATCH_RECLAIM_S,
+        f"chronological ({config.BATCH_WINDOW})" if chronological else "queue order",
     )
 
     from .db.database import get_admin_async_session_factory
@@ -264,19 +282,40 @@ async def main() -> None:
             _log.info("Reclaimed %d stale 'processing' task(s)", reclaimed)
 
     total = 0
+    waves = 0
     while True:
         async with factory() as db:
-            n = await run_batch_once(db)
+            n = await run_batch_once(db, chronological=chronological)
         if n == 0:
             break
         total += n
+        waves += 1
+        if chronological:
+            _log.info("Wave %d done (%d task(s))", waves, n)
 
     _log.info("Batch backfill complete. Claimed %d task(s) total.", total)
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Drain the signal_process queue via the Anthropic Batches API.",
+    )
+    parser.add_argument(
+        "--weekly",
+        action="store_true",
+        help=(
+            "Chronological backfill: replay one time window at a time "
+            "(HUMETRIC_BATCH_WINDOW, default week) with at most one signal per "
+            "entity per wave, so the curator reconciles against real history "
+            "instead of every signal taking the cold-start fast path."
+        ),
+    )
+    args = parser.parse_args()
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    asyncio.run(main())
+    asyncio.run(main(chronological=True if args.weekly else None))
