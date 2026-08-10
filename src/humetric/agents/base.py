@@ -101,6 +101,70 @@ async def get_tenant_llm_config(tenant_id: int, db) -> tuple[str, str | None]:
     return provider, api_key
 
 
+async def get_tenant_llm_configs(
+    tenant_id: int, db,
+) -> tuple[list[tuple[str, str | None]], str]:
+    """Return ([(provider, api_key), ...], jury_strategy) for the tenant.
+
+    One member means a plain single-provider call; several put the request in
+    jury mode. Providers that are disabled platform-wide, or that have no key
+    on file, are dropped here — a member that cannot run would otherwise just
+    add a guaranteed failure to every request. Anthropic is exempt because it
+    falls back to the platform key.
+
+    Never returns an empty list: if nothing survives filtering it falls back to
+    anthropic on the platform key, matching get_tenant_llm_config's behaviour.
+    """
+    from ..store import Store
+
+    fallback = ([("anthropic", config.ANTHROPIC_API_KEY)], config.LLM_JURY_STRATEGY)
+
+    try:
+        keys_dict = await Store.get_tenant_keys(db, tenant_id)
+    except Exception as exc:
+        _log.warning(
+            "Tenant key config lookup failed for tenant %d, using platform anthropic: %s",
+            tenant_id, exc,
+        )
+        return fallback
+
+    strategy = keys_dict.get("llm_jury_strategy") or config.LLM_JURY_STRATEGY
+    selected = keys_dict.get("llm_providers") or [keys_dict.get("llm_provider") or "anthropic"]
+
+    has_key = {
+        "anthropic": True,  # platform key fallback
+        "openai": bool(keys_dict.get("has_openai_key")),
+        "google": bool(keys_dict.get("has_google_ai_key")),
+        "deepseek": bool(keys_dict.get("has_deepseek_key")),
+    }
+
+    members: list[tuple[str, str | None]] = []
+    for provider in selected[: config.LLM_JURY_MAX_MEMBERS]:
+        if provider not in config.ENABLED_LLM_PROVIDERS:
+            _log.info("Tenant %d selected disabled provider %s — skipped.", tenant_id, provider)
+            continue
+        if not has_key.get(provider, False):
+            _log.info("Tenant %d selected %s with no key on file — skipped.", tenant_id, provider)
+            continue
+        try:
+            api_key = await Store.decrypt_tenant_key(db, tenant_id, provider)
+        except Exception as exc:
+            _log.warning(
+                "BYO key decryption failed for tenant %d provider %s: %s",
+                tenant_id, provider, exc,
+            )
+            api_key = None
+        if not api_key and provider == "anthropic":
+            api_key = config.ANTHROPIC_API_KEY
+        if not api_key:
+            continue
+        members.append((provider, api_key))
+
+    if not members:
+        return fallback
+    return members, strategy
+
+
 def _build_tool_and_system(
     system: str, schema: Type[T], tool_name: str, tool_description: str,
 ) -> tuple[dict, object]:

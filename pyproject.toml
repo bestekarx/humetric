@@ -39,11 +39,11 @@ byok-openai = [
     "openai>=1.40",
 ]
 byok-google = [
-    "google-generativeai>=0.8",
+    "google-genai>=1.0",
 ]
 byok-all = [
     "openai>=1.40",
-    "google-generativeai>=0.8",
+    "google-genai>=1.0",
 ]
 billing = [
     "stripe>=10.0",

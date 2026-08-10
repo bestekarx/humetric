@@ -259,6 +259,10 @@ class QueryResponse(BaseModel):
     results: list[RankedResult]
     top_k: int
     model: str | None = None
+    # Which provider produced the ranking, and — in jury mode — how far the
+    # panel agreed. Lets a caller audit a ranking after the fact.
+    provider: str | None = None
+    jury: dict | None = None
 
 
 # ── API Key ────────────────────────────────────────────────────
@@ -530,7 +534,11 @@ class RankingResult(BaseModel):
     results: list[RankedResultLLM] = Field(default_factory=list)
 
 
-# ── Tenant Keys (Spec 025 + multi-provider BYOK) ───────────────
+# ── Tenant Keys (Spec 025 + multi-provider BYOK + jury) ────────
+
+# Mirrors agents.jury.STRATEGIES. Duplicated as a literal rather than imported
+# so schema.py stays free of any agent-layer import.
+JURY_STRATEGIES = ("best_of", "field_merge", "majority")
 
 class TenantKeysRead(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -540,7 +548,15 @@ class TenantKeysRead(BaseModel):
     has_openai_key: bool = False
     has_google_ai_key: bool = False
     has_deepseek_key: bool = False
+    # Mirrors llm_providers[0]; kept for clients written before multi-select.
     llm_provider: str = "anthropic"
+    # Active providers. More than one puts every agent run in jury mode.
+    llm_providers: list[str] = Field(default_factory=lambda: ["anthropic"])
+    llm_jury_strategy: str = "best_of"
+    # Providers this deployment allows — the dashboard renders its selector
+    # from this instead of hardcoding a list that can drift from the server.
+    enabled_providers: list[str] = Field(default_factory=lambda: list(config.ENABLED_LLM_PROVIDERS))
+    jury_strategies: list[str] = Field(default_factory=lambda: list(JURY_STRATEGIES))
     updated_at: datetime | None = None
 
 
@@ -553,6 +569,19 @@ class TenantKeysUpdate(BaseModel):
     google_ai_key: str | None = Field(default=None, max_length=512, description="Plaintext Google AI API key")
     deepseek_key: str | None = Field(default=None, max_length=512, description="Plaintext DeepSeek API key")
     llm_provider: str | None = Field(default=None, max_length=64, description="Active LLM provider: anthropic | openai | google | deepseek")
+    llm_providers: list[str] | None = Field(
+        default=None,
+        max_length=8,
+        description=(
+            "Active LLM providers. More than one runs every request on all of "
+            "them in parallel and reconciles the answers via jury. List order "
+            "is the tie-breaker."
+        ),
+    )
+    llm_jury_strategy: str | None = Field(
+        default=None,
+        description="Jury strategy when several providers are active: best_of | field_merge | majority",
+    )
 
     @field_validator("llm_provider")
     @classmethod
@@ -561,6 +590,42 @@ class TenantKeysUpdate(BaseModel):
             raise ValueError(
                 f"Unsupported or disabled LLM provider: '{v}'. "
                 f"Enabled providers: {', '.join(config.ENABLED_LLM_PROVIDERS)}"
+            )
+        return v
+
+    @field_validator("llm_providers")
+    @classmethod
+    def _validate_llm_providers(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        # De-duplicate while preserving order — order is the jury tie-breaker,
+        # and a repeated provider would otherwise be billed twice per request.
+        seen: list[str] = []
+        for p in v:
+            p = (p or "").strip()
+            if p and p not in seen:
+                seen.append(p)
+        if not seen:
+            raise ValueError("At least one LLM provider must stay active.")
+        unknown = [p for p in seen if p not in config.ENABLED_LLM_PROVIDERS]
+        if unknown:
+            raise ValueError(
+                f"Unsupported or disabled LLM provider(s): {', '.join(unknown)}. "
+                f"Enabled providers: {', '.join(config.ENABLED_LLM_PROVIDERS)}"
+            )
+        if len(seen) > config.LLM_JURY_MAX_MEMBERS:
+            raise ValueError(
+                f"At most {config.LLM_JURY_MAX_MEMBERS} providers may be active at once "
+                f"(each one multiplies the LLM cost of every request)."
+            )
+        return seen
+
+    @field_validator("llm_jury_strategy")
+    @classmethod
+    def _validate_jury_strategy(cls, v: str | None) -> str | None:
+        if v is not None and v not in JURY_STRATEGIES:
+            raise ValueError(
+                f"Unknown jury strategy: '{v}'. Valid: {', '.join(JURY_STRATEGIES)}"
             )
         return v
 
@@ -618,6 +683,28 @@ class TenantDashboardResponse(BaseModel):
     usage_current_month: dict = {}
     limits: dict = {}
     stripe_customer_portal_url: str | None = None
+    # Free Pro trial. The dashboard renders its "start trial" card from
+    # trial_available; it must always be present, because a missing value reads
+    # as false and shows the tenant an "already used" message.
+    trial_status: str = "none"
+    trial_available: bool = False
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    trial_days_left: int | None = None
+
+
+class TrialResponse(BaseModel):
+    """POST /v1/tenant/start-trial result."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    tenant_id: int
+    tier: str
+    trial_status: str
+    trial_started_at: datetime | None = None
+    trial_ends_at: datetime | None = None
+    trial_days_left: int | None = None
+    message: str | None = None
 
 
 class RotateApiKeyResponse(BaseModel):

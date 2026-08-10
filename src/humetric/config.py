@@ -59,14 +59,28 @@ DEEPSEEK_AGENT_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_AGENT_MODEL", "deepseek
 DEEPSEEK_CURATOR_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_CURATOR_MODEL", "deepseek-chat")
 DEEPSEEK_RANKER_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_RANKER_MODEL", "deepseek-chat")
 
-# BYOK: beta allows anthropic only; expand with comma-separated list.
-# To enable all 4 providers with a single env var:
-# HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic,openai,google,deepseek
+# BYOK: tenants pick their own LLM provider in the dashboard. Narrow the list
+# with a comma-separated env var (e.g. HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic)
+# to disable providers platform-wide.
 ENABLED_LLM_PROVIDERS = [
     p.strip()
-    for p in os.environ.get("HUMETRIC_ENABLED_LLM_PROVIDERS", "anthropic").split(",")
+    for p in os.environ.get(
+        "HUMETRIC_ENABLED_LLM_PROVIDERS", "anthropic,openai,google,deepseek"
+    ).split(",")
     if p.strip()
 ]
+
+# Jury: a tenant may activate several providers at once. The same request then
+# runs on all of them and the answers are reconciled by this strategy.
+# Per-tenant value lives in tenant.llm_jury_strategy; this is the default for
+# tenants that never chose one.
+LLM_JURY_STRATEGY = os.environ.get("HUMETRIC_LLM_JURY_STRATEGY", "best_of")
+# 0 disables the check. Above 0, a jury that agrees less than this fails the
+# call instead of quietly returning a low-confidence answer.
+LLM_JURY_MIN_AGREEMENT = float(os.environ.get("HUMETRIC_LLM_JURY_MIN_AGREEMENT", "0"))
+# Upper bound on how many providers one request may fan out to — protects a
+# tenant from multiplying their own LLM bill by more than they intended.
+LLM_JURY_MAX_MEMBERS = int(os.environ.get("HUMETRIC_LLM_JURY_MAX_MEMBERS", "4"))
 
 
 def get_extractor_model(provider: str) -> str:
@@ -174,6 +188,15 @@ REGISTER_RATE_LIMIT_PER_HOUR = int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT"
 REQUIRE_EMAIL_VERIFICATION = (
     os.environ.get("HUMETRIC_REQUIRE_EMAIL_VERIFICATION", "true").lower() != "false"
 )
+# Free Pro trial: length in days and the tier it grants while active.
+# A tenant may activate it once (trial_status none → active → expired).
+TRIAL_DAYS = int(os.environ.get("HUMETRIC_TRIAL_DAYS", "90"))
+TRIAL_TIER = os.environ.get("HUMETRIC_TRIAL_TIER", "pro")
+# Kalan gün sayacı bu saat diliminin gece yarısında düşer. UTC kullanılsaydı
+# sayaç TR kullanıcısı için gün ortasında (03:00) değişirdi; denemenin başladığı
+# saatte değişmesi ise "sayı takılı kalmış" hissi veriyordu.
+DISPLAY_TZ = os.environ.get("HUMETRIC_DISPLAY_TZ", "Europe/Istanbul")
+
 FREE_TIER_SIGNAL_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_SIGNAL_LIMIT", "1000"))
 FREE_TIER_ENTITY_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_ENTITY_LIMIT", "10"))
 FREE_TIER_PACK_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_PACK_LIMIT", "1"))

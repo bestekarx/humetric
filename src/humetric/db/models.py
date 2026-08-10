@@ -56,8 +56,18 @@ class Tenant(Base):
     embedding_provider: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="voyage"
     )
+    # Kept in sync with llm_providers[0]; retained for clients and code paths
+    # that still read a single active provider.
     llm_provider: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default="anthropic"
+    )
+    # Active providers (016_llm_jury). More than one runs the request on all of
+    # them and reconciles via jury; list order is the tie-breaker.
+    llm_providers: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default='["anthropic"]'
+    )
+    llm_jury_strategy: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default="best_of"
     )
     monthly_signal_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entity_quota: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -74,6 +84,17 @@ class Tenant(Base):
         String(20), nullable=False, server_default="inactive"
     )
     tier: Mapped[str] = mapped_column(String(20), nullable=False, server_default="free")
+    # 3-month free Pro trial (017_tenant_trial). none → active → expired; a
+    # tenant may only ever make the none → active transition once.
+    trial_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="none"
+    )
+    trial_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    trial_ends_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     subscription_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

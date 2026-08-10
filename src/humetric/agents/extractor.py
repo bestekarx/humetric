@@ -5,7 +5,7 @@ from __future__ import annotations
 from .. import config
 from ..schema import ExtractedMetric, ExtractionResult
 from . import _load_prompt
-from .multi_llm import structured_call_multi
+from .multi_llm import structured_call_jury
 
 _DEFAULT_SYSTEM = _load_prompt("extractor-default")
 if not _DEFAULT_SYSTEM:
@@ -69,19 +69,27 @@ async def extract_metrics(
     api_key: str | None = None,
     provider: str | None = None,
     call_meta: dict | None = None,
+    members: list[tuple[str, str | None]] | None = None,
+    jury_strategy: str = "best_of",
 ) -> list[ExtractedMetric]:
+    """Extract metrics from a signal.
+
+    `members` carries the tenant's active providers; several of them put the
+    call in jury mode. `provider`/`api_key` remain for single-provider callers
+    and are used to build a one-member panel, so both paths run the same code.
+    """
     system, user = build_extract_inputs(signal_text, entity_context, pack_prompt, pack_metrics)
-    resolved_provider = provider or "anthropic"
-    model = config.get_extractor_model(resolved_provider)
-    result = await structured_call_multi(
-        provider=resolved_provider,
-        model=model,
-        api_key=api_key,
+    panel = members or [(provider or "anthropic", api_key)]
+    result = await structured_call_jury(
+        members=panel,
         system=system,
         user=user,
         schema=ExtractionResult,
         tool_name="extract_metrics",
         tool_description="Extract metrics from the signal text",
+        model_for=config.get_extractor_model,
+        jury_strategy=jury_strategy,
+        min_agreement=config.LLM_JURY_MIN_AGREEMENT,
         tenant_id=tenant_id,
         call_meta=call_meta,
     )

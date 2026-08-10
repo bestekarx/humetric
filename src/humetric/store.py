@@ -9,7 +9,8 @@ from __future__ import annotations
 import base64
 import logging
 import os as _os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -813,6 +814,14 @@ class Store:
             "has_google_ai_key": bool(tenant.google_ai_key_encrypted),
             "has_deepseek_key": bool(tenant.deepseek_key_encrypted),
             "llm_provider": tenant.llm_provider or "anthropic",
+            # Rows written before 016_llm_jury have an empty list; fall back to
+            # the singular field so they read as a one-provider selection.
+            "llm_providers": (
+                list(tenant.llm_providers)
+                if isinstance(tenant.llm_providers, list) and tenant.llm_providers
+                else [tenant.llm_provider or "anthropic"]
+            ),
+            "llm_jury_strategy": tenant.llm_jury_strategy or "best_of",
             "updated_at": tenant.updated_at,
         }
 
@@ -825,6 +834,8 @@ class Store:
             "has_google_ai_key": False,
             "has_deepseek_key": False,
             "llm_provider": "anthropic",
+            "llm_providers": ["anthropic"],
+            "llm_jury_strategy": "best_of",
             "updated_at": None,
         }
 
@@ -852,8 +863,18 @@ class Store:
             tenant.google_ai_key_encrypted = encrypt_key(data["google_ai_key"])
         if data.get("deepseek_key") is not None:
             tenant.deepseek_key_encrypted = encrypt_key(data["deepseek_key"])
-        if data.get("llm_provider") is not None:
+        # Selection: llm_providers is authoritative when present. llm_provider
+        # is always mirrored to the first entry so any code path still reading
+        # the singular field agrees with the list.
+        providers = data.get("llm_providers")
+        if providers:
+            tenant.llm_providers = list(providers)
+            tenant.llm_provider = providers[0]
+        elif data.get("llm_provider") is not None:
             tenant.llm_provider = data["llm_provider"]
+            tenant.llm_providers = [data["llm_provider"]]
+        if data.get("llm_jury_strategy") is not None:
+            tenant.llm_jury_strategy = data["llm_jury_strategy"]
         tenant.updated_at = datetime.now(timezone.utc)
         db.add(tenant)
         await db.commit()
@@ -871,8 +892,11 @@ class Store:
         tenant.deepseek_key_encrypted = None
         # Reset provider so a tenant that removed BYO keys never gets locked out:
         # anthropic falls back to the platform key. Keeping a non-anthropic
-        # provider here would leave the pipeline keyless and failing.
+        # provider here would leave the pipeline keyless and failing. The same
+        # applies to a multi-provider selection, so collapse it too.
         tenant.llm_provider = "anthropic"
+        tenant.llm_providers = ["anthropic"]
+        tenant.llm_jury_strategy = "best_of"
         tenant.updated_at = datetime.now(timezone.utc)
         db.add(tenant)
         await db.commit()
@@ -897,6 +921,77 @@ class Store:
         if not encrypted:
             return None
         return decrypt_key(encrypted)
+
+    # --- Free Pro trial (017_tenant_trial) ---
+
+    @staticmethod
+    async def get_trial_state(db: AsyncSession, tenant_id: int) -> dict:
+        """Current trial state, expiring it in place if its time has passed.
+
+        Expiry is settled lazily on read rather than by a background sweep:
+        the state is only ever observed through the dashboard or a start
+        attempt, so a lapsed trial can never be seen as still active.
+        """
+        tenant = await Store.get_tenant_by_id(db, tenant_id)
+        if not tenant:
+            return _empty_trial_state()
+
+        if await Store._expire_trial_if_due(db, tenant):
+            await db.commit()
+
+        return _trial_state(tenant)
+
+    @staticmethod
+    async def start_trial(db: AsyncSession, tenant_id: int) -> dict:
+        """Activate the free Pro trial.
+
+        Returns a dict with ``ok``; when False, ``reason`` says why so the API
+        can map it to the right status code. The only path to ``ok`` is a
+        tenant whose trial_status is still 'none' — that is what makes the
+        trial once-per-tenant.
+        """
+        tenant = await Store.get_tenant_by_id(db, tenant_id)
+        if not tenant:
+            return {"ok": False, "reason": "tenant_not_found", **_empty_trial_state()}
+
+        await Store._expire_trial_if_due(db, tenant)
+
+        if (tenant.trial_status or "none") != "none":
+            await db.commit()
+            return {"ok": False, "reason": "trial_already_used", **_trial_state(tenant)}
+
+        now = datetime.now(timezone.utc)
+        tenant.trial_status = "active"
+        tenant.trial_started_at = now
+        tenant.trial_ends_at = now + timedelta(days=config.TRIAL_DAYS)
+        tenant.tier = config.TRIAL_TIER
+        tenant.subscription_status = "trialing"
+        tenant.updated_at = now
+        db.add(tenant)
+        await db.commit()
+
+        return {"ok": True, **_trial_state(tenant)}
+
+    @staticmethod
+    async def _expire_trial_if_due(db: AsyncSession, tenant) -> bool:
+        """Flip a lapsed active trial back to free. Returns True if changed.
+
+        Only touches tier/subscription_status when they still look like the
+        trial's own doing — a tenant who bought a real subscription mid-trial
+        must not be knocked back to free when the trial period runs out.
+        """
+        if (tenant.trial_status or "none") != "active":
+            return False
+        if not tenant.trial_ends_at or tenant.trial_ends_at > datetime.now(timezone.utc):
+            return False
+
+        tenant.trial_status = "expired"
+        if tenant.subscription_status == "trialing":
+            tenant.subscription_status = "inactive"
+            tenant.tier = "free"
+        tenant.updated_at = datetime.now(timezone.utc)
+        db.add(tenant)
+        return True
 
     # --- Reviewer Override (eval/replay harness) ---
 
@@ -1047,6 +1142,59 @@ def _metric_row_to_read(row: EntityMetric) -> dict:
 # ── Encryption (Spec 025) ──────────────────────────────────────
 
 _ENCRYPTION_KEY: bytes | None = None
+
+
+def _display_tz() -> tzinfo:
+    """Saat dilimi adı geçersizse UTC'ye düş — sayaç yüzünden istek patlamasın."""
+    try:
+        return ZoneInfo(config.DISPLAY_TZ)
+    except Exception:  # noqa: BLE001 - bilinmeyen/eksik tzdata
+        _log.warning("Geçersiz HUMETRIC_DISPLAY_TZ=%r, UTC kullanılıyor", config.DISPLAY_TZ)
+        return timezone.utc
+
+
+def _trial_days_left(ends_at: datetime | None) -> int | None:
+    """Kalan takvim günü sayısı. None = çalışan deneme yok.
+
+    Takvim günü farkı kullanılır (timestamp farkı değil): sayaç yerel gece
+    yarısında düşer, denemenin başladığı saatte değil. Deneme henüz bitmediyse
+    sonuç en az 1'dir — bugün hâlâ erişimi var, "0 gün kaldı" yanıltıcı olur.
+    """
+    if not ends_at:
+        return None
+    now = datetime.now(timezone.utc)
+    if ends_at <= now:
+        return 0
+    tz = _display_tz()
+    days = (ends_at.astimezone(tz).date() - now.astimezone(tz).date()).days
+    return max(1, days)
+
+
+def _trial_state(tenant) -> dict:
+    status = tenant.trial_status or "none"
+    return {
+        "tenant_id": tenant.id,
+        "tier": tenant.tier,
+        "trial_status": status,
+        # The single source of truth for the dashboard's "Start trial" button.
+        # Anything other than 'none' means this tenant already had its turn.
+        "trial_available": status == "none",
+        "trial_started_at": tenant.trial_started_at,
+        "trial_ends_at": tenant.trial_ends_at,
+        "trial_days_left": _trial_days_left(tenant.trial_ends_at) if status == "active" else None,
+    }
+
+
+def _empty_trial_state() -> dict:
+    return {
+        "tenant_id": 0,
+        "tier": "free",
+        "trial_status": "none",
+        "trial_available": False,
+        "trial_started_at": None,
+        "trial_ends_at": None,
+        "trial_days_left": None,
+    }
 
 
 def _get_encryption_key() -> bytes:

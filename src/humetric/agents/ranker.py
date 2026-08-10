@@ -6,7 +6,7 @@ from .. import config
 from ..schema import RankedResult, RankingResult
 from ..db.models import Entity
 from . import _load_prompt
-from .multi_llm import structured_call_multi
+from .multi_llm import structured_call_jury
 
 _DEFAULT_SYSTEM = _load_prompt("ranker-default")
 if not _DEFAULT_SYSTEM:
@@ -22,7 +22,15 @@ async def rank_entities(
     tenant_id: int | None = None,
     api_key: str | None = None,
     provider: str | None = None,
+    members: list[tuple[str, str | None]] | None = None,
+    jury_strategy: str = "best_of",
+    call_meta: dict | None = None,
 ) -> list[RankedResult]:
+    """Rank entities against a query.
+
+    `members` carries the tenant's active providers; several of them put the
+    call in jury mode. `provider`/`api_key` remain for single-provider callers.
+    """
     if not entities:
         return []
 
@@ -45,18 +53,19 @@ Entity listesi:
 
 En ilgili {min(top_k, len(entities))} entity'yi sirala."""
 
-    resolved_provider = provider or "anthropic"
-    model = config.get_ranker_model(resolved_provider)
-    result = await structured_call_multi(
-        provider=resolved_provider,
-        model=model,
-        api_key=api_key,
+    panel = members or [(provider or "anthropic", api_key)]
+    result = await structured_call_jury(
+        members=panel,
         system=_DEFAULT_SYSTEM,
         user=user,
         schema=RankingResult,
         tool_name="rank_entities",
         tool_description="Score and rank entities against the query",
+        model_for=config.get_ranker_model,
+        jury_strategy=jury_strategy,
+        min_agreement=config.LLM_JURY_MIN_AGREEMENT,
         tenant_id=tenant_id,
+        call_meta=call_meta,
     )
 
     ranked: list[RankedResult] = []

@@ -6,7 +6,7 @@ from .. import config
 from ..schema import CurationResult, ExtractedMetric, FinalMetric
 from ..db.models import EntityMetric
 from . import _load_prompt
-from .multi_llm import structured_call_multi
+from .multi_llm import structured_call_jury
 
 _DEFAULT_SYSTEM = _load_prompt("curator-default")
 if not _DEFAULT_SYSTEM:
@@ -168,23 +168,30 @@ async def curate_metrics(
     api_key: str | None = None,
     provider: str | None = None,
     call_meta: dict | None = None,
+    members: list[tuple[str, str | None]] | None = None,
+    jury_strategy: str = "best_of",
 ) -> list[FinalMetric]:
+    """Validate extracted metrics and decide their final values.
+
+    `members` carries the tenant's active providers; several of them put the
+    call in jury mode. `provider`/`api_key` remain for single-provider callers.
+    """
     if not extracted:
         return []
 
     system, user = build_curate_inputs(extracted, existing_metrics, entity_context, pack_def)
-    resolved_provider = provider or "anthropic"
-    model = config.get_curator_model(resolved_provider)
+    panel = members or [(provider or "anthropic", api_key)]
 
-    result = await structured_call_multi(
-        provider=resolved_provider,
-        model=model,
-        api_key=api_key,
+    result = await structured_call_jury(
+        members=panel,
         system=system,
         user=user,
         schema=CurationResult,
         tool_name="curate_metrics",
         tool_description="Validate the extracted metrics and determine final values",
+        model_for=config.get_curator_model,
+        jury_strategy=jury_strategy,
+        min_agreement=config.LLM_JURY_MIN_AGREEMENT,
         tenant_id=tenant_id,
         call_meta=call_meta,
     )

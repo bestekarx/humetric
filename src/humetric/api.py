@@ -75,6 +75,7 @@ from .schema import (
     TenantDashboardResponse,
     TenantKeysRead,
     TenantKeysUpdate,
+    TrialResponse,
     UsageRecordOut,
     UsageReportResponse,
     VerifyEmailResponse,
@@ -1231,8 +1232,9 @@ async def query_entities(
         top_k=max(top_k * 3, 20),
     )
 
-    from .agents.base import get_tenant_llm_config
-    llm_provider, llm_key = await get_tenant_llm_config(tenant_id, db)
+    from .agents.base import get_tenant_llm_configs
+    llm_members, jury_strategy = await get_tenant_llm_configs(tenant_id, db)
+    rank_meta: dict = {}
     ranked = await ranker.rank_entities(
         candidates,
         query=body.free_text_query or body.rank_by or "",
@@ -1240,8 +1242,9 @@ async def query_entities(
         include_reasoning=body.include_reasoning,
         top_k=top_k,
         tenant_id=tenant_id,
-        api_key=llm_key,
-        provider=llm_provider,
+        members=llm_members,
+        jury_strategy=jury_strategy,
+        call_meta=rank_meta,
     )
 
     results = []
@@ -1269,7 +1272,13 @@ async def query_entities(
             )
         )
 
-    return QueryResponse(results=results, top_k=top_k, model=config.CURATOR_MODEL)
+    return QueryResponse(
+        results=results,
+        top_k=top_k,
+        model=rank_meta.get("model") or config.get_ranker_model(llm_members[0][0]),
+        provider=rank_meta.get("provider") or llm_members[0][0],
+        jury=rank_meta.get("jury"),
+    )
 
 
 # ── Helper ─────────────────────────────────────────────────────
@@ -1329,6 +1338,8 @@ async def upsert_tenant_keys(
             "google_ai_key": body.google_ai_key,
             "deepseek_key": body.deepseek_key,
             "llm_provider": body.llm_provider,
+            "llm_providers": body.llm_providers,
+            "llm_jury_strategy": body.llm_jury_strategy,
         })
     except RuntimeError:
         return JSONResponse(
@@ -1510,15 +1521,80 @@ async def tenant_dashboard(
         except ImportError:
             pass
 
+    # Read after any lazy expiry so tier/limits above and the trial fields
+    # below cannot disagree within one response.
+    trial = await Store.get_trial_state(db, tenant_id)
+
     return TenantDashboardResponse(
         tenant_id=tenant.id,
-        tier=tenant.tier,
+        tier=trial["tier"],
         subscription_status=tenant.subscription_status,
         api_key_prefix="hm_live",
         usage_current_month=usage,
         limits=limits,
         stripe_customer_portal_url=portal_url,
+        trial_status=trial["trial_status"],
+        trial_available=trial["trial_available"],
+        trial_started_at=trial["trial_started_at"],
+        trial_ends_at=trial["trial_ends_at"],
+        trial_days_left=trial["trial_days_left"],
     ).model_dump()
+
+
+@app.post(
+    f"{V1_PREFIX}/tenant/start-trial",
+    tags=["Tenant"],
+    response_model=TrialResponse,
+    summary="Activate the free Pro trial",
+    responses={409: {"model": ErrorResponse, "description": "Trial already used"}},
+)
+async def start_trial(
+    request: Request,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    """Grant this tenant the one-off free Pro trial.
+
+    Once-per-tenant: only a tenant still at trial_status 'none' can activate
+    it. A second attempt returns 409, which is what the dashboard turns into
+    the "already used" message.
+    """
+    tenant_id = request.state.tenant_id
+    result = await Store.start_trial(db, tenant_id)
+
+    if not result["ok"]:
+        if result["reason"] == "tenant_not_found":
+            raise HTTPException(
+                status_code=404,
+                detail=error_envelope("tenant_not_found", "Tenant not found").model_dump(),
+            )
+        raise HTTPException(
+            status_code=409,
+            detail=error_envelope(
+                "trial_already_used",
+                "This account has already used its free Pro trial.",
+            ).model_dump(),
+        )
+
+    await Store.write_audit_log(db, {
+        "tenant_id": tenant_id,
+        "action": "trial_started",
+        "details": {
+            "tier": result["tier"],
+            "ends_at": result["trial_ends_at"].isoformat() if result["trial_ends_at"] else None,
+            "days": config.TRIAL_DAYS,
+        },
+        "api_key_id": getattr(request.state, "api_key_id", None),
+    })
+
+    return TrialResponse(
+        tenant_id=result["tenant_id"],
+        tier=result["tier"],
+        trial_status=result["trial_status"],
+        trial_started_at=result["trial_started_at"],
+        trial_ends_at=result["trial_ends_at"],
+        trial_days_left=result["trial_days_left"],
+        message=f"{config.TRIAL_DAYS} günlük ücretsiz Pro denemeniz başladı.",
+    )
 
 
 @app.post(f"{V1_PREFIX}/tenant/rotate-api-key", tags=["Tenant"])
