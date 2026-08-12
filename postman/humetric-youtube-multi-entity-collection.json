@@ -1,0 +1,421 @@
+{
+  "info": {
+    "name": "HuMetric — YouTube Pack Multi-Entity Test",
+    "description": "3 farkli, tamamen ozgun (telifsiz, bu koleksiyon icin yazilmis test verisi) entity ile youtube_episode pack'ini test eder. Her entity icin: entity olustur -> birlesik sinyal (aciklama+transkript+yorumlar, pack'in kendi beklentisine uygun tek cagri) gonder -> sonuc/metrikleri kontrol et -> ikinci (delta yorum) sinyali gonderip curator'un confidence-agirlikli birlestirmesini (agents/curator.py:finalize_merge) dogrula -> 3 entity'nin metriklerinin birbirinden izole kaldigini karsilastir.\n\nNot: MAX_TOKENS artik 8192 (.env), curator deterministik (LLM cagrisi yok), pack basina max 7 metrik sinirlanmis oldugu icin bu test suitesi guncel motor davranisini dogrular.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8002"
+    },
+    {
+      "key": "apiKey",
+      "value": ""
+    },
+    {
+      "key": "signalId_yt_test_fintech_001",
+      "value": ""
+    },
+    {
+      "key": "signalId_yt_test_health_002",
+      "value": ""
+    },
+    {
+      "key": "signalId_yt_test_course_003",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "yt-test-fintech-001",
+      "item": [
+        {
+          "name": "1. Create Entity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"yt-test-fintech-001\", \"entity_type\": \"youtube_episode\", \"fields\": {\"video_id\": \"yt-test-fintech-001\", \"video_title\": \"Yapay Zeka ile Kisisel Butce Yonetimi - Gercekten Ise Yariyor mu?\", \"channel_name\": \"Parasal Ozgurluk TR\", \"episode_number\": 12, \"published_at\": \"2026-06-01T00:00:00Z\", \"duration_seconds\": 1380, \"view_count\": 4200, \"comment_count\": 9, \"guest_names\": \"Ozgun test verisi - konuk yok\", \"transcript_language\": \"tr\"}}"
+            }
+          }
+        },
+        {
+          "name": "2. Send Signal - Wave 1 (aciklama+transkript+yorumlar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "yt-test-fintech-001-wave1"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entity_id\": \"yt-test-fintech-001\", \"entity_type\": \"youtube_episode\", \"text\": \"[VIDEO ACIKLAMASI]\\nBu bolumde yapay zeka destekli butce uygulamalarini test ettik. Uygulama aylik 49 TL ucretli, ilk 7 gun ucretsiz deneme sunuyor. Sponsorlu icerik degildir, kendi param ile satin aldim.\\n\\n[TRANSKRIPT]\\nBugun 3 farkli yapay zeka butce uygulamasini kendi banka hesaplarimla test ettim. Birincisi otomatik olarak harcamalari kategorize ediyor, ben de 2 ay boyunca elle kontrol ettim, yuzde 92 dogruluk oranini kendim olctum, ekranda goruyorsunuz tabloyu. Ikinci uygulama ise abonelik takibi yapiyor ama gecen ay 3 tane kucuk aboneligi kacirdi, yani mukemmel degil. Ucuncu uygulama tamamen ucretsiz ama reklamlarla dolu, kullanici deneyimi kotu. Aylik maliyet konusuna gelirsek: birinci uygulama 49 TL, ikinci uygulama 79 TL, ucuncusu ucretsiz ama veri gizliligi konusunda suphelerim var, kullanici sozlesmesini okudum ve verilerinizi 3. taraflarla paylasabiliyorlar. Bu videoyu hazirlarken hicbir sponsorluk almadim, tum uygulamalari kendi param ile satin aldim, boylece tarafsiz kalabildim. Regulasyon acisindan bakarsak, bu uygulamalar banka hesabiniza salt-okunur erisim istiyor, BDDK lisansli olup olmadiklarini kontrol etmeniz onemli, ben ikisinin lisansli oldugunu dogruladim ama ucuncusunun lisans bilgisine ulasamadim, bu bir risk. Sonuc olarak abartili bir 'parani katla' vaadi yok burada, sadece takip kolaylastiriyor, gercek tasarruf disiplin gerektiriyor, bunu acikca söylüyorum.\\n\\n[YORUMLAR - ozgun test verisi]\\n1) yazar: kullanici_a1 | begeni: 3 | yanit: hayir | tarih: 2026-08-12 | metin: Ben de birinci uygulamayi kullaniyorum, gercekten kategorize etmesi cok isime yariyor, kurdugum butceyi uyguladim ve bu ay 400 TL tasarruf ettim.\\n2) yazar: kullanici_b2 | begeni: 1 | yanit: hayir | tarih: 2026-08-12 | metin: Ucuncu uygulamayi indirmistim ama veri paylasimi konusunu bilmiyordum, hemen sildim, tesekkurler uyari icin.\\n3) yazar: kullanici_c3 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: BDDK lisansi kontrolu onemliymis, ben hic dusunmemistim, video sayesinde ogrendim.\\n4) yazar: kullanici_d4 | begeni: 2 | yanit: hayir | tarih: 2026-08-12 | metin: Reklamdan bahsetmiyor olman guven verici, diger kanallar hep sponsorlu iceriklerle doluyor.\\n5) yazar: kullanici_e5 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: 49 TL biraz pahaliya geldi bana, ucretsiz alternatif yok mu daha guvenilir?\\n6) yazar: kullanici_f6 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Bu ay hic bir sey degistiremedim ama en azindan nereye harcadigimi gorebiliyorum.\\n7) yazar: kullanici_g7 | begeni: 1 | yanit: hayir | tarih: 2026-08-12 | metin: Videoyu izledikten sonra ben de deneme surumu actim, 7 gun icinde karar veririm.\", \"structured\": {\"source\": \"combined\", \"wave\": 1}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.signal_id) { pm.collectionVariables.set('signalId_yt_test_fintech_001', json.signal_id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Get Signal Status (Wave 1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals/{{signalId_yt_test_fintech_001}}"
+          }
+        },
+        {
+          "name": "4. Get Entity Metrics (Wave 1 sonrasi)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities/yt-test-fintech-001/metrics"
+          }
+        },
+        {
+          "name": "5. Send Signal - Wave 2 (yeni yorumlar, curator merge testi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "yt-test-fintech-001-wave2"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entity_id\": \"yt-test-fintech-001\", \"entity_type\": \"youtube_episode\", \"text\": \"[VIDEO ACIKLAMASI]\\nBu bolumde yapay zeka destekli butce uygulamalarini test ettik. Uygulama aylik 49 TL ucretli, ilk 7 gun ucretsiz deneme sunuyor. Sponsorlu icerik degildir, kendi param ile satin aldim.\\n\\n[TRANSKRIPT]\\nBugun 3 farkli yapay zeka butce uygulamasini kendi banka hesaplarimla test ettim. Birincisi otomatik olarak harcamalari kategorize ediyor, ben de 2 ay boyunca elle kontrol ettim, yuzde 92 dogruluk oranini kendim olctum, ekranda goruyorsunuz tabloyu. Ikinci uygulama ise abonelik takibi yapiyor ama gecen ay 3 tane kucuk aboneligi kacirdi, yani mukemmel degil. Ucuncu uygulama tamamen ucretsiz ama reklamlarla dolu, kullanici deneyimi kotu. Aylik maliyet konusuna gelirsek: birinci uygulama 49 TL, ikinci uygulama 79 TL, ucuncusu ucretsiz ama veri gizliligi konusunda suphelerim var, kullanici sozlesmesini okudum ve verilerinizi 3. taraflarla paylasabiliyorlar. Bu videoyu hazirlarken hicbir sponsorluk almadim, tum uygulamalari kendi param ile satin aldim, boylece tarafsiz kalabildim. Regulasyon acisindan bakarsak, bu uygulamalar banka hesabiniza salt-okunur erisim istiyor, BDDK lisansli olup olmadiklarini kontrol etmeniz onemli, ben ikisinin lisansli oldugunu dogruladim ama ucuncusunun lisans bilgisine ulasamadim, bu bir risk. Sonuc olarak abartili bir 'parani katla' vaadi yok burada, sadece takip kolaylastiriyor, gercek tasarruf disiplin gerektiriyor, bunu acikca söylüyorum.\\n\\n[YORUMLAR - ozgun test verisi]\\n1) yazar: kullanici_h8 | begeni: 4 | yanit: hayir | tarih: 2026-08-12 | metin: Bir ay kullandim, gercekten ise yariyor, kredi kartı borcumu kapatmayi basardim, ilk kez!\\n2) yazar: kullanici_i9 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Uygulamanin musteri hizmetleri cok yavas, 3 gun cevap bekledim.\\n3) yazar: kullanici_j10 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Ikinci uygulamadaki abonelik kacirma sorunu bende de oldu, dikkatli olun.\", \"structured\": {\"source\": \"combined\", \"wave\": 2}}"
+            }
+          }
+        },
+        {
+          "name": "6. Get Entity Metrics (Wave 2 sonrasi - birlesme kontrolu)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities/yt-test-fintech-001/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "yt-test-health-002",
+      "item": [
+        {
+          "name": "1. Create Entity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"yt-test-health-002\", \"entity_type\": \"youtube_episode\", \"fields\": {\"video_id\": \"yt-test-health-002\", \"video_title\": \"Evde Dogal Cilt Bakimi Tarifleri - Doktor Onayli mi?\", \"channel_name\": \"Dogal Yasam Rehberi\", \"episode_number\": 34, \"published_at\": \"2026-05-15T00:00:00Z\", \"duration_seconds\": 900, \"view_count\": 15800, \"comment_count\": 8, \"guest_names\": \"Ozgun test verisi - konuk yok\", \"transcript_language\": \"tr\"}}"
+            }
+          }
+        },
+        {
+          "name": "2. Send Signal - Wave 1 (aciklama+transkript+yorumlar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "yt-test-health-002-wave1"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entity_id\": \"yt-test-health-002\", \"entity_type\": \"youtube_episode\", \"text\": \"[VIDEO ACIKLAMASI]\\nBu bolumde evde hazirlanabilecek cilt bakim maskeleri gosteriyoruz. Bu icerik tibbi tavsiye niteliginde degildir, dermatolog onerisi yerine gecmez.\\n\\n[TRANSKRIPT]\\nBugun size limon ve karbonat ile yaptigim bir cilt aydinlatma maskesi gosterecegim. Bu tarif internette cok populer ama ben once kendi kolumde test ettim, 3 gun bekledim, hicbir tahris olmadi. Ama herkeste ayni sonuc olmayabilir, cilt tipiniz farkli olabilir. Karbonat cildin doğal pH dengesini bozabilir diye okudum, bu konuda kesin bir bilimsel kaynak gostermiyorum, sadece kendi deneyimimi paylasiyorum. Ikinci tarif bal ve yulaf maskesi, bu daha guvenli cunku yulaf genelde yatistirici etkisi oldugu biliniyor, ama ben burada da 'garanti sonuc' soz vermiyorum. Bu urunleri satmiyorum, hicbir sponsorlugum yok, sadece kendi mutfagimda yaptigim seyleri paylasiyorum. Eger cildinizde acilik, kizariklik olursa hemen durdurun ve bir dermatologa basvurun, ben doktor degilim. Maliyet olarak bu tarifler pratik olarak ücretsiz, evinizdeki malzemelerle yapabiliyorsunuz, ekstra bir urun satin almaniza gerek yok.\\n\\n[YORUMLAR - ozgun test verisi]\\n1) yazar: izleyici_k1 | begeni: 5 | yanit: hayir | tarih: 2026-08-12 | metin: Ben denedim ve yuzumde kizariklik oldu, herkes icin uygun degilmis, dikkatli olun.\\n2) yazar: izleyici_l2 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Doktor onayli degil dedigin icin tesekkurler, en azindan durum acik.\\n3) yazar: izleyici_m3 | begeni: 2 | yanit: hayir | tarih: 2026-08-12 | metin: Yaban mersini de cilt icin iyi geliyor diye okumustum, o tarif de olur mu?\\n4) yazar: izleyici_n4 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Karbonatin pH dengesini bozdugu dogru, ben eczaciyim, dikkatli kullanilmali.\\n5) yazar: izleyici_o5 | begeni: 1 | yanit: hayir | tarih: 2026-08-12 | metin: 3 haftadir bal-yulaf maskesi yapiyorum, cildim gercekten daha yumusak oldu.\\n6) yazar: izleyici_p6 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Bu kanalda hep boyle abartisiz, dengeli anlatim var, begeniyorum.\", \"structured\": {\"source\": \"combined\", \"wave\": 1}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.signal_id) { pm.collectionVariables.set('signalId_yt_test_health_002', json.signal_id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Get Signal Status (Wave 1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals/{{signalId_yt_test_health_002}}"
+          }
+        },
+        {
+          "name": "4. Get Entity Metrics (Wave 1 sonrasi)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities/yt-test-health-002/metrics"
+          }
+        },
+        {
+          "name": "5. Send Signal - Wave 2 (yeni yorumlar, curator merge testi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "yt-test-health-002-wave2"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entity_id\": \"yt-test-health-002\", \"entity_type\": \"youtube_episode\", \"text\": \"[VIDEO ACIKLAMASI]\\nBu bolumde evde hazirlanabilecek cilt bakim maskeleri gosteriyoruz. Bu icerik tibbi tavsiye niteliginde degildir, dermatolog onerisi yerine gecmez.\\n\\n[TRANSKRIPT]\\nBugun size limon ve karbonat ile yaptigim bir cilt aydinlatma maskesi gosterecegim. Bu tarif internette cok populer ama ben once kendi kolumde test ettim, 3 gun bekledim, hicbir tahris olmadi. Ama herkeste ayni sonuc olmayabilir, cilt tipiniz farkli olabilir. Karbonat cildin doğal pH dengesini bozabilir diye okudum, bu konuda kesin bir bilimsel kaynak gostermiyorum, sadece kendi deneyimimi paylasiyorum. Ikinci tarif bal ve yulaf maskesi, bu daha guvenli cunku yulaf genelde yatistirici etkisi oldugu biliniyor, ama ben burada da 'garanti sonuc' soz vermiyorum. Bu urunleri satmiyorum, hicbir sponsorlugum yok, sadece kendi mutfagimda yaptigim seyleri paylasiyorum. Eger cildinizde acilik, kizariklik olursa hemen durdurun ve bir dermatologa basvurun, ben doktor degilim. Maliyet olarak bu tarifler pratik olarak ücretsiz, evinizdeki malzemelerle yapabiliyorsunuz, ekstra bir urun satin almaniza gerek yok.\\n\\n[YORUMLAR - ozgun test verisi]\\n1) yazar: izleyici_q7 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Dermatologuma sordum, karbonat konusunda seni dogruladi, tesekkurler.\\n2) yazar: izleyici_r8 | begeni: 3 | yanit: hayir | tarih: 2026-08-12 | metin: Bu tarifi denedim, hicbir sey degismedi ama en azindan zarar da gormedim.\", \"structured\": {\"source\": \"combined\", \"wave\": 2}}"
+            }
+          }
+        },
+        {
+          "name": "6. Get Entity Metrics (Wave 2 sonrasi - birlesme kontrolu)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities/yt-test-health-002/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "yt-test-course-003",
+      "item": [
+        {
+          "name": "1. Create Entity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id\": \"yt-test-course-003\", \"entity_type\": \"youtube_episode\", \"fields\": {\"video_id\": \"yt-test-course-003\", \"video_title\": \"Uzaktan Calisanlar icin 5 Dakikalik Verimlilik Rutini\", \"channel_name\": \"Verimli Ofis\", \"episode_number\": 7, \"published_at\": \"2026-07-10T00:00:00Z\", \"duration_seconds\": 620, \"view_count\": 8300, \"comment_count\": 8, \"guest_names\": \"Ozgun test verisi - konuk yok\", \"transcript_language\": \"tr\"}}"
+            }
+          }
+        },
+        {
+          "name": "2. Send Signal - Wave 1 (aciklama+transkript+yorumlar)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "yt-test-course-003-wave1"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entity_id\": \"yt-test-course-003\", \"entity_type\": \"youtube_episode\", \"text\": \"[VIDEO ACIKLAMASI]\\nBu bolumde uzaktan calisanlar icin gunluk 5 dakikalik bir planlama rutini anlatiyoruz. Herhangi bir urun tanitimi veya sponsorluk icermez.\\n\\n[TRANSKRIPT]\\nBugun anlatacagim rutin cok basit: sabah ise baslamadan once 5 dakika ayirip gunun en onemli 3 isini yaziyorsunuz, digger her seyi ikinci plana atiyorsunuz. Bunu ben 6 aydir uyguluyorum ve gunluk tamamlanan gorev sayim yuzde 40 artti, bunu kendi takip tablomdan gosteriyorum. Bazi terimler kullanacagim: 'time-boxing' dedigimiz sey, bir ise sabit bir sure ayirip o surede bitirmeye calismak demek, yani 'bu ise 25 dakika ayiriyorum' diyorsunuz ve zamanlayici kuruyorsunuz. Bu yontem herkes icin ayni sonucu vermez, ekip calismasi gerektiren isleri olan kisiler icin daha zor uygulanabilir. Ucretsiz bir yontem bu, hicbir uygulama veya arac satin almaniza gerek yok, sadece kagit kalem yeterli. Abartili bir vaat yapmiyorum, bu sizi bir gecede super verimli yapmayacak, disiplinli tekrar gerektiriyor.\\n\\n[YORUMLAR - ozgun test verisi]\\n1) yazar: takipci_s1 | begeni: 2 | yanit: hayir | tarih: 2026-08-12 | metin: Bunu 2 haftadir uyguluyorum, gercekten ise yariyor, sabahlari daha az kayboluyorum.\\n2) yazar: takipci_t2 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Time-boxing terimini ilk kez duydum, aciklaman iyi oldu, anladim.\\n3) yazar: takipci_u3 | begeni: 1 | yanit: hayir | tarih: 2026-08-12 | metin: Ekip toplantilarim cok oldugu icin benim icin pek uygulanabilir degil bu yontem.\\n4) yazar: takipci_v4 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Cok teknik degil, herkes anlar, begendim.\\n5) yazar: takipci_w5 | begeni: 3 | yanit: hayir | tarih: 2026-08-12 | metin: Uyguladim ve bu hafta ilk kez tum gunluk hedeflerimi tamamladim!\\n6) yazar: takipci_x6 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Bu konu daha once de baska kanallarda anlatilmisti, yeni bir sey yok bence.\", \"structured\": {\"source\": \"combined\", \"wave\": 1}}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.signal_id) { pm.collectionVariables.set('signalId_yt_test_course_003', json.signal_id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Get Signal Status (Wave 1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals/{{signalId_yt_test_course_003}}"
+          }
+        },
+        {
+          "name": "4. Get Entity Metrics (Wave 1 sonrasi)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities/yt-test-course-003/metrics"
+          }
+        },
+        {
+          "name": "5. Send Signal - Wave 2 (yeni yorumlar, curator merge testi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "yt-test-course-003-wave2"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/signals",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"entity_id\": \"yt-test-course-003\", \"entity_type\": \"youtube_episode\", \"text\": \"[VIDEO ACIKLAMASI]\\nBu bolumde uzaktan calisanlar icin gunluk 5 dakikalik bir planlama rutini anlatiyoruz. Herhangi bir urun tanitimi veya sponsorluk icermez.\\n\\n[TRANSKRIPT]\\nBugun anlatacagim rutin cok basit: sabah ise baslamadan once 5 dakika ayirip gunun en onemli 3 isini yaziyorsunuz, digger her seyi ikinci plana atiyorsunuz. Bunu ben 6 aydir uyguluyorum ve gunluk tamamlanan gorev sayim yuzde 40 artti, bunu kendi takip tablomdan gosteriyorum. Bazi terimler kullanacagim: 'time-boxing' dedigimiz sey, bir ise sabit bir sure ayirip o surede bitirmeye calismak demek, yani 'bu ise 25 dakika ayiriyorum' diyorsunuz ve zamanlayici kuruyorsunuz. Bu yontem herkes icin ayni sonucu vermez, ekip calismasi gerektiren isleri olan kisiler icin daha zor uygulanabilir. Ucretsiz bir yontem bu, hicbir uygulama veya arac satin almaniza gerek yok, sadece kagit kalem yeterli. Abartili bir vaat yapmiyorum, bu sizi bir gecede super verimli yapmayacak, disiplinli tekrar gerektiriyor.\\n\\n[YORUMLAR - ozgun test verisi]\\n1) yazar: takipci_y7 | begeni: 1 | yanit: hayir | tarih: 2026-08-12 | metin: Bir ay oldu, hala uyguluyorum, aliskanlik haline geldi.\\n2) yazar: takipci_z8 | begeni: 0 | yanit: hayir | tarih: 2026-08-12 | metin: Ekip arkadaslarima da onerdim, onlar da begendi.\", \"structured\": {\"source\": \"combined\", \"wave\": 2}}"
+            }
+          }
+        },
+        {
+          "name": "6. Get Entity Metrics (Wave 2 sonrasi - birlesme kontrolu)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/entities/yt-test-course-003/metrics"
+          }
+        }
+      ]
+    },
+    {
+      "name": "0. Saglik Kontrolu",
+      "item": [
+        {
+          "name": "Worker Health",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/healthz/worker"
+          }
+        }
+      ]
+    }
+  ]
+}
