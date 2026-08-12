@@ -62,6 +62,11 @@ services:
       HUMETRIC_FREE_TIER_ENTITY_LIMIT: ${HUMETRIC_FREE_TIER_ENTITY_LIMIT:-10}
       HUMETRIC_FREE_TIER_PACK_LIMIT: ${HUMETRIC_FREE_TIER_PACK_LIMIT:-1}
       HUMETRIC_CORS_ALLOWED_ORIGINS: ${HUMETRIC_CORS_ALLOWED_ORIGINS:-https://gethumetric.com,https://www.gethumetric.com}
+      # Wizard (pack generation) and ranker (/v1/query) run in-process here via
+      # structured_call, which shares MAX_TOKENS with the extractor. Without
+      # headroom a wizard-generated pack with many metrics truncates silently.
+      HUMETRIC_MAX_TOKENS: ${HUMETRIC_MAX_TOKENS:-8192}
+      HUMETRIC_MAX_METRICS_PER_PACK: ${HUMETRIC_MAX_METRICS_PER_PACK:-7}
       # Transactional email via Amazon SES (SMTP interface).
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -102,6 +107,12 @@ services:
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
       HUMETRIC_ENCRYPTION_KEY: ${HUMETRIC_ENCRYPTION_KEY:-}
+      # Extraction forces one structured object per pack metric into a single
+      # response; past ~7-8 metrics the default 2048-token cap truncates it
+      # mid-generation and silently persists metrics: [] (no error). See
+      # config.py:MAX_TOKENS.
+      HUMETRIC_MAX_TOKENS: ${HUMETRIC_MAX_TOKENS:-8192}
+      HUMETRIC_MAX_METRICS_PER_PACK: ${HUMETRIC_MAX_METRICS_PER_PACK:-7}
     healthcheck:
       test: ["CMD", "python", "-c", "import os,sys,time; p='/tmp/humetric_worker_heartbeat'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<300 else 1)"]
       interval: 30s
@@ -131,7 +142,7 @@ services:
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
       HUMETRIC_ENCRYPTION_KEY: ${HUMETRIC_ENCRYPTION_KEY:-}
       HUMETRIC_BATCH_SUBMIT_SIZE: ${HUMETRIC_BATCH_SUBMIT_SIZE:-1000}
-      HUMETRIC_CURATOR_FAST_PATH_ENABLED: ${HUMETRIC_CURATOR_FAST_PATH_ENABLED:-true}
+      HUMETRIC_MAX_TOKENS: ${HUMETRIC_MAX_TOKENS:-8192}
     restart: "no"
 
 volumes:
