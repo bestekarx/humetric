@@ -264,8 +264,9 @@ docker compose -f docker-compose.dokploy.yml --profile backfill run --rm batch-b
 ```
 
 Tasks stuck in `processing` by a crashed run are reclaimed on the next start.
-Pair with `HUMETRIC_CURATOR_FAST_PATH_ENABLED=true` to skip the curator LLM
-call for cold-start entities.
+Curation itself is a deterministic confidence-weighted merge (see
+`agents/curator.py:finalize_merge`), not an LLM call — only extraction runs
+through the Batches API here.
 
 ## BYO-Key (Bring Your Own Keys)
 

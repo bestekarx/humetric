@@ -241,7 +241,11 @@ class SignalCreate(BaseModel):
 
     entity_id: str = Field(max_length=128)
     entity_type: str = Field(max_length=64)
-    text: str | None = None
+    # Unbounded text is forwarded whole into the extractor's LLM prompt every
+    # time this signal is processed — no size limit here means no limit on
+    # per-call token cost. 300k chars covers a full multi-hour transcript
+    # with headroom.
+    text: str | None = Field(default=None, max_length=300000)
     structured: dict | None = None
     external_id: str | None = Field(default=None, max_length=200)
     # When the source text was actually produced — the timeline axis of the
@@ -460,6 +464,9 @@ class PackPrompts(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     extraction: str = ""
+    # Curation is now a deterministic confidence-weighted merge (see
+    # agents/curator.py:finalize_merge), not an LLM call — this field is kept
+    # for pack YAML backward-compatibility but is no longer read by the engine.
     curation: str = ""
 
 
@@ -510,6 +517,12 @@ class PackDefinition(BaseModel):
     prompts: PackPrompts = Field(default_factory=PackPrompts)
     kvkk: PackKVKK = Field(default_factory=PackKVKK)
     display: PackDisplay = Field(default_factory=PackDisplay)
+
+    # No metric-count cap here on purpose: the AI wizard (agents/wizard.py)
+    # reuses this exact schema as its LLM structured-output type to generate
+    # a broad candidate list — the count is enforced only at the persistence
+    # boundary (api.py create_pack/update_pack), after the user has trimmed
+    # the wizard's suggestions down to the ones they actually want.
 
 
 class PackCreate(BaseModel):
@@ -620,22 +633,6 @@ class ExtractionResult(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     metrics: list[ExtractedMetric] = Field(default_factory=list)
-
-
-class CurationDecision(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    metric_key: str = Field(validation_alias=AliasChoices("metric_key", "metricKey"))
-    value: float
-    confidence: float
-    action: str
-    reasoning: str = ""
-
-
-class CurationResult(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
-    decisions: list[CurationDecision] = Field(default_factory=list)
 
 
 class FinalMetric(BaseModel):

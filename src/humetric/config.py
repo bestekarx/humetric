@@ -48,15 +48,14 @@ MATCHMAKER_MODEL = os.environ.get("HUMETRIC_MATCHMAKER_MODEL", "claude-sonnet-4-
 CURATOR_MODEL = os.environ.get("HUMETRIC_CURATOR_MODEL", "claude-sonnet-4-6")
 WIZARD_MODEL = os.environ.get("HUMETRIC_WIZARD_MODEL", "claude-haiku-4-5-20251001")
 
-# Per-provider model defaults (BYOK multi-provider)
+# Per-provider model defaults (BYOK multi-provider). Curation has no
+# per-provider model — it is a deterministic merge (agents/curator.py), not
+# an LLM call.
 OPENAI_AGENT_MODEL = os.environ.get("HUMETRIC_OPENAI_AGENT_MODEL", "gpt-4o-mini")
-OPENAI_CURATOR_MODEL = os.environ.get("HUMETRIC_OPENAI_CURATOR_MODEL", "gpt-4o")
 OPENAI_RANKER_MODEL = os.environ.get("HUMETRIC_OPENAI_RANKER_MODEL", "gpt-4o")
 GOOGLE_AGENT_MODEL = os.environ.get("HUMETRIC_GOOGLE_AGENT_MODEL", "gemini-1.5-flash")
-GOOGLE_CURATOR_MODEL = os.environ.get("HUMETRIC_GOOGLE_CURATOR_MODEL", "gemini-1.5-pro")
 GOOGLE_RANKER_MODEL = os.environ.get("HUMETRIC_GOOGLE_RANKER_MODEL", "gemini-1.5-pro")
 DEEPSEEK_AGENT_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_AGENT_MODEL", "deepseek-chat")
-DEEPSEEK_CURATOR_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_CURATOR_MODEL", "deepseek-chat")
 DEEPSEEK_RANKER_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_RANKER_MODEL", "deepseek-chat")
 
 # BYOK: beta allows anthropic only; expand with comma-separated list.
@@ -79,16 +78,6 @@ def get_extractor_model(provider: str) -> str:
     return AGENT_MODEL
 
 
-def get_curator_model(provider: str) -> str:
-    if provider == "openai":
-        return OPENAI_CURATOR_MODEL
-    if provider == "google":
-        return GOOGLE_CURATOR_MODEL
-    if provider == "deepseek":
-        return DEEPSEEK_CURATOR_MODEL
-    return CURATOR_MODEL
-
-
 def get_ranker_model(provider: str) -> str:
     if provider == "openai":
         return OPENAI_RANKER_MODEL
@@ -108,13 +97,14 @@ MAX_TOKENS = int(os.environ.get("HUMETRIC_MAX_TOKENS", "2048"))
 DECAY_LAMBDA = float(os.environ.get("HUMETRIC_DECAY_LAMBDA", str(math.log(2) / 365)))
 PROMPT_CACHE_ENABLED = os.environ.get("HUMETRIC_PROMPT_CACHE_ENABLED", "true").lower() != "false"
 
-# Cost controls (backfill). Curator fast-path: on a cold-start entity (no
-# existing metrics) the Sonnet curator is a near-deterministic pass-through,
-# so finalize the extractor output locally and skip the LLM call. Opt-in —
-# default off keeps real-time behaviour unchanged.
-CURATOR_FAST_PATH_ENABLED = (
-    os.environ.get("HUMETRIC_CURATOR_FAST_PATH_ENABLED", "false").lower() == "true"
-)
+# A pack's extraction call must emit one structured object per metric
+# (value + confidence + reasoning + source_span) in a single forced tool-use
+# response bounded by MAX_TOKENS. Past ~7-8 metrics that output routinely
+# gets cut off mid-generation and silently yields metrics: [] (no error —
+# the truncated tool call still validates against ExtractionResult's empty
+# default). Enforced at pack create/update time in schema.py:PackDefinition.
+MAX_METRICS_PER_PACK = int(os.environ.get("HUMETRIC_MAX_METRICS_PER_PACK", "7"))
+
 # Batch worker: drains the signal_process queue via the Anthropic Message
 # Batches API (50% cost) for backfill. Tunables for the one-shot batch job.
 BATCH_SUBMIT_SIZE = int(os.environ.get("HUMETRIC_BATCH_SUBMIT_SIZE", "1000"))

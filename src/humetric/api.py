@@ -1038,6 +1038,24 @@ async def list_audit_logs(
 
 # ── POST /v1/packs (Spec 023) ──────────────────────────────────
 
+def _check_max_metrics(parsed: PackDefinition) -> None:
+    """Enforced only at persistence time — the wizard reuses PackDefinition
+    as its LLM output schema and is allowed to suggest more than this many
+    metrics for the user to pick from."""
+    if len(parsed.metrics) > config.MAX_METRICS_PER_PACK:
+        raise HTTPException(
+            status_code=422,
+            detail=error_envelope(
+                "too_many_metrics",
+                f"A pack may define at most {config.MAX_METRICS_PER_PACK} metrics "
+                f"(got {len(parsed.metrics)}). The extraction call emits one "
+                "structured object per metric in a single response — too many "
+                "metrics overflow the output budget and silently produce zero "
+                "metrics. Pick the metrics that matter most.",
+            ).model_dump(),
+        )
+
+
 @app.post(
     f"{V1_PREFIX}/packs",
     tags=["Packs"],
@@ -1077,6 +1095,7 @@ async def create_pack(
             status_code=422,
             detail=error_envelope("validation_error", f"Invalid pack definition: {exc}").model_dump(),
         )
+    _check_max_metrics(parsed)
 
     pack_key = body.pack_key or raw.get("entity_type", "untitled")
     entity_type = parsed.entity_type
@@ -1226,6 +1245,7 @@ async def update_pack(
             status_code=422,
             detail=error_envelope("validation_error", f"Invalid pack definition: {exc}").model_dump(),
         )
+    _check_max_metrics(parsed)
 
     pack_def = parsed.model_dump(exclude_none=True)
     updated = await Store.update_pack(db, tenant_id, pack_key, pack_def)
