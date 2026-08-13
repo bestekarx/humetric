@@ -5,8 +5,9 @@ HuMetric REST API'sinin tamamini Claude'un kullanabilecegi tool'lara acar.
 Transport: stdio (Claude Desktop) veya SSE / streamable-http (uzak host).
 
 Kullanim:
-  python mcp_server.py                          # stdio
-  python mcp_server.py --transport sse --port 8765
+  humetric-mcp                                  # stdio (pip install -e . sonrasi)
+  humetric-mcp --transport sse --port 8765
+  python -m humetric.mcp_server                 # kurulum yapmadan gelistirme
 
 Yapilandirma (.env veya ortam degiskeni):
   HUMETRIC_MCP_API_KEY   zorunlu — hm_live_... API anahtari
@@ -46,7 +47,7 @@ from typing import Annotated, Any
 
 import httpx
 from dotenv import load_dotenv
-from mcp.server import MCPServer
+from mcp.server.fastmcp import FastMCP as MCPServer
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
@@ -249,9 +250,9 @@ DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
 
 server = MCPServer(
     name="humetric",
-    title="HuMetric",
-    description="Sinyallerden varlik metrikleri ureten agentik metrik motoru.",
     instructions="""
+HuMetric: Sinyallerden varlik metrikleri ureten agentik metrik motoru.
+
 HuMetric, serbest metin veya yapilandirilmis "sinyal"lerden varliklar (entity)
 hakkinda metrik cikaran bir servistir. Tipik akis:
 
@@ -774,7 +775,8 @@ def main() -> None:
     if args.transport == "stdio":
         server.run(transport="stdio")
     else:
-        server.run(transport=args.transport, port=args.port)
+        server.settings.port = args.port
+        server.run(transport=args.transport)
 
 
 if __name__ == "__main__":

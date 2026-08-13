@@ -117,7 +117,7 @@ Analyse the diff and generate a Conventional Commits message.
 | `prompts` | `prompts/` |
 | `ci` | `.github/workflows/` |
 | `docs` | `docs/` |
-| `mcp` | `mcp_server.py` |
+| `mcp` | `src/humetric/mcp_server.py` |
 
 Omit scope when changes span more than 3 unrelated scopes.
 

@@ -7,6 +7,7 @@ herhangi bir istemci, HuMetric API'sini doğrudan kullanabilir.
 
 ```bash
 pip install -e .              # mcp>=1.0 bağımlılığı pyproject'te
+                               # kurulum, `humetric-mcp` komutunu PATH'e ekler
 ```
 
 ### Claude Desktop
@@ -17,8 +18,7 @@ pip install -e .              # mcp>=1.0 bağımlılığı pyproject'te
 {
   "mcpServers": {
     "humetric": {
-      "command": "/mutlak/yol/humetric/.venv/bin/python",
-      "args": ["/mutlak/yol/humetric/mcp_server.py"],
+      "command": "/mutlak/yol/humetric/.venv/bin/humetric-mcp",
       "env": {
         "HUMETRIC_MCP_API_KEY": "hm_live_...",
         "HUMETRIC_BASE_URL": "http://localhost:8002"
@@ -37,15 +37,18 @@ başlatır; göreli yol sessizce "server failed to start" ile sonuçlanır.
 claude mcp add humetric \
   --env HUMETRIC_MCP_API_KEY=hm_live_... \
   --env HUMETRIC_BASE_URL=http://localhost:8002 \
-  -- /mutlak/yol/humetric/.venv/bin/python /mutlak/yol/humetric/mcp_server.py
+  -- /mutlak/yol/humetric/.venv/bin/humetric-mcp
 ```
 
 ### Uzak host (SSE / streamable-http)
 
 ```bash
-python mcp_server.py --transport sse --port 8765
-python mcp_server.py --transport streamable-http --port 8765
+humetric-mcp --transport sse --port 8765
+humetric-mcp --transport streamable-http --port 8765
 ```
+
+Geliştirme sırasında paket kurmadan çalıştırmak için:
+`python -m humetric.mcp_server --transport stdio`
 
 ## Ortam değişkenleri
 

@@ -221,14 +221,20 @@ curl -X POST "$BASE/query" \
 
 ## MCP Server
 
-Integrate HuMetric directly into Claude Desktop or any MCP-compatible client:
+Integrate HuMetric directly into Claude Desktop, Claude Code, or any MCP-compatible client. The
+server exposes 24 typed tools covering signals, entities/metrics, query, metric packs, human
+review, KVKK consent, and account/audit endpoints — see [`docs/mcp.md`](docs/mcp.md) for the full
+tool list and design notes.
 
 ```bash
-# stdio mode (Claude Desktop)
-python mcp_server.py --transport stdio
+# after `pip install -e .`, the humetric-mcp console script is on PATH
 
-# SSE mode (remote, multi-client)
-python mcp_server.py --transport sse --port 8765
+# stdio mode (Claude Desktop)
+humetric-mcp --transport stdio
+
+# SSE / streamable-http mode (remote, multi-client)
+humetric-mcp --transport sse --port 8765
+humetric-mcp --transport streamable-http --port 8765
 ```
 
 Environment: set `HUMETRIC_MCP_API_KEY` and `HUMETRIC_BASE_URL` in `.env`.
@@ -238,8 +244,7 @@ For Claude Desktop, add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "humetric": {
-      "command": "python",
-      "args": ["mcp_server.py"],
+      "command": "/absolute/path/to/humetric/.venv/bin/humetric-mcp",
       "env": {
         "HUMETRIC_MCP_API_KEY": "hm_live_...",
         "HUMETRIC_BASE_URL": "http://localhost:8002"
@@ -249,7 +254,8 @@ For Claude Desktop, add to `claude_desktop_config.json`:
 }
 ```
 
-Available tools: `humetric_ingest_signal`, `humetric_query_entities`, `humetric_get_entity`, `humetric_list_entities`.
+**Use absolute paths.** Claude Desktop launches the command from its own working directory; a
+relative path silently fails with "server failed to start".
 
 ## Batch Backfill Worker
 

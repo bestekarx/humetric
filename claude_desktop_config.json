@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "humetric": {
-      "command": "python",
-      "args": ["humetric/mcp_server.py", "--transport", "stdio"],
+      "command": "/absolute/path/to/humetric/.venv/bin/humetric-mcp",
+      "args": ["--transport", "stdio"],
       "env": {
         "HUMETRIC_MCP_API_KEY": "hu_live_your_api_key_here",
         "HUMETRIC_BASE_URL": "http://localhost:8002"

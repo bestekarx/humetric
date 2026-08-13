@@ -58,6 +58,7 @@ analytics = [
 humetric-api = "humetric.api:main"
 humetric-seed = "humetric.seed:main"
 humetric-replay = "humetric.replay:main"
+humetric-mcp = "humetric.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]
