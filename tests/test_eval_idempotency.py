@@ -35,7 +35,7 @@ async def test_idempotency_key_prevents_duplicate_signal():
     factory = get_async_session_factory()
     async with factory() as db:
         from sqlalchemy import text
-        tenant = await Store.create_tenant(db, {"kod": "idm1", "ad": "Idempotency Test"})
+        tenant = await Store.create_tenant(db, {"code": "idm1", "name": "Idempotency Test"})
         await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(tenant.id)})
 
         entity = await Store.upsert_entity(db, {
@@ -67,7 +67,7 @@ async def test_idempotency_key_expires_after_24h():
     factory = get_async_session_factory()
     async with factory() as db:
         from sqlalchemy import text
-        tenant = await Store.create_tenant(db, {"kod": "idm2", "ad": "Idempotency Expiry"})
+        tenant = await Store.create_tenant(db, {"code": "idm2", "name": "Idempotency Expiry"})
         await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(tenant.id)})
 
         entity = await Store.upsert_entity(db, {
@@ -104,7 +104,7 @@ async def test_get_next_task_skip_locked_excludes_processing():
     """SKIP LOCKED ensures processing tasks are not picked up again."""
     factory = get_async_session_factory()
     async with factory() as db:
-        tenant = await Store.create_tenant(db, {"kod": "skl2", "ad": "SkipLock"})
+        tenant = await Store.create_tenant(db, {"code": "skl2", "name": "SkipLock"})
 
         await Store.create_task(db, {
             "tenant_id": tenant.id,
@@ -129,7 +129,7 @@ async def test_upsert_metric_is_idempotent():
     """Upserting the same metric twice does not create duplicate rows."""
     factory = get_async_session_factory()
     async with factory() as db:
-        tenant = await Store.create_tenant(db, {"kod": "ups1", "ad": "Upsert Test"})
+        tenant = await Store.create_tenant(db, {"code": "ups1", "name": "Upsert Test"})
 
         data = {
             "tenant_id": tenant.id,
@@ -161,7 +161,7 @@ async def test_task_retry_does_not_double_count():
     """Task retry should not cause metric double-count since upsert is idempotent."""
     factory = get_async_session_factory()
     async with factory() as db:
-        tenant = await Store.create_tenant(db, {"kod": "rtc1", "ad": "Retry Count"})
+        tenant = await Store.create_tenant(db, {"code": "rtc1", "name": "Retry Count"})
 
         data = {
             "tenant_id": tenant.id,
@@ -208,7 +208,7 @@ async def test_signal_input_hash_is_set():
     async with factory() as db:
         from humetric.agents.versioning import hash_text
         from sqlalchemy import text
-        tenant = await Store.create_tenant(db, {"kod": "ish1", "ad": "InputHash"})
+        tenant = await Store.create_tenant(db, {"code": "ish1", "name": "InputHash"})
         await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(tenant.id)})
 
         entity = await Store.upsert_entity(db, {

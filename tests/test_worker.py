@@ -34,7 +34,7 @@ async def test_retry_schedule_increments_retry_count(client):
     factory = get_async_session_factory()
     async with factory() as db:
         from humetric import auth as humetric_auth
-        tenant = await Store.create_tenant(db, {"kod": "rty", "ad": "Retry Test"})
+        tenant = await Store.create_tenant(db, {"code": "rty", "name": "Retry Test"})
         signal = None
         task = await Store.create_task(db, {
             "tenant_id": tenant.id,
@@ -63,7 +63,7 @@ async def test_fail_task_permanently(client):
     factory = get_async_session_factory()
     async with factory() as db:
         from humetric import auth as humetric_auth
-        tenant = await Store.create_tenant(db, {"kod": "flt", "ad": "Fail Test"})
+        tenant = await Store.create_tenant(db, {"code": "flt", "name": "Fail Test"})
         task = await Store.create_task(db, {
             "tenant_id": tenant.id,
             "signal_id": None,
@@ -89,7 +89,7 @@ async def test_get_next_task_skip_locked(client):
     factory = get_async_session_factory()
     async with factory() as db:
         from humetric import auth as humetric_auth
-        tenant = await Store.create_tenant(db, {"kod": "skl", "ad": "SkipLock Test"})
+        tenant = await Store.create_tenant(db, {"code": "skl", "name": "SkipLock Test"})
         for i in range(3):
             await Store.create_task(db, {
                 "tenant_id": tenant.id,
@@ -112,7 +112,7 @@ async def test_healthz_worker_reflects_queue_depth(client):
     factory = get_async_session_factory()
     async with factory() as db:
         from humetric import auth as humetric_auth
-        tenant = await Store.create_tenant(db, {"kod": "hqw", "ad": "HealthQ Test"})
+        tenant = await Store.create_tenant(db, {"code": "hqw", "name": "HealthQ Test"})
         await Store.create_task(db, {
             "tenant_id": tenant.id,
             "signal_id": None,

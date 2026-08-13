@@ -40,7 +40,7 @@ async def test_bad_request_raises_non_retryable():
                 system="test",
                 user="test",
                 schema=FakeSchema,
-                tool_ad="test",
+                tool_name="test",
                 tool_aciklama="test",
             )
 
@@ -62,7 +62,7 @@ async def test_api_status_error_raises():
                 system="test",
                 user="test",
                 schema=FakeSchema,
-                tool_ad="test",
+                tool_name="test",
                 tool_aciklama="test",
             )
 
@@ -84,7 +84,7 @@ async def test_rate_limit_error_raises():
                 system="test",
                 user="test",
                 schema=FakeSchema,
-                tool_ad="test",
+                tool_name="test",
                 tool_aciklama="test",
             )
 

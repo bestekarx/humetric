@@ -111,7 +111,7 @@ async def test_no_packs_tenant_create_entity_422(async_client):
         await session.execute(text("SELECT set_config('app.tenant_id', '2', false)"))
         tenant = await Store.get_tenant_by_kod(session, "empty")
         if not tenant:
-            tenant = await Store.create_tenant(session, {"kod": "empty", "ad": "Empty"})
+            tenant = await Store.create_tenant(session, {"code": "empty", "name": "Empty"})
         full_key, _ = await Store.create_api_key(
             session,
             tenant_id=tenant.id,

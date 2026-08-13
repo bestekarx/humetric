@@ -5,6 +5,7 @@ Run: uvicorn humetric.api:app --reload --port 8002
 
 from __future__ import annotations
 
+import anthropic
 import logging
 import secrets
 import uuid
@@ -148,6 +149,49 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content=error_envelope("internal_error", str(detail)).model_dump(),
+    )
+
+
+# LLM saglayicisinin reddettigi istekler (gecersiz anahtar, bitmis kredi, oran
+# siniri) bu handler olmadan islenmemis istisna olarak kabarip istemciye duz
+# metin "Internal Server Error" ve HTTP 500 olarak donuyordu. Ne durum kodu ne
+# govde gercegi soyluyordu: cagiran taraf — ozellikle MCP uzerinden calisan bir
+# agent — "sunucu bozuk" ile "anahtarinizin suresi dolmus" arasindaki farki
+# goremiyordu. Sorun yukaridaki saglayicida oldugu icin dogru kod 502.
+@app.exception_handler(anthropic.APIError)
+async def llm_provider_exception_handler(request: Request, exc: anthropic.APIError):
+    code, status, message = _classify_llm_error(exc)
+    _log.error("LLM saglayici hatasi (%s): %s", code, exc)
+    return JSONResponse(
+        status_code=status,
+        content=error_envelope(code, message).model_dump(),
+    )
+
+
+def _classify_llm_error(exc: Exception) -> tuple[str, int, str]:
+    """Saglayici istisnasini (kod, HTTP durumu, kullaniciya gidecek mesaj)'a cevir."""
+    name = type(exc).__name__
+    text = str(exc).lower()
+
+    if "authentication" in name.lower() or "api key" in text or "401" in text:
+        return (
+            "llm_auth_failed", 502,
+            "LLM saglayicisi API anahtarini reddetti. Sunucudaki ANTHROPIC_API_KEY "
+            "(veya tenant'in kendi saglayici anahtari) gecersiz ya da iptal edilmis.",
+        )
+    if "credit" in text or "billing" in text or "quota" in text or "insufficient" in text:
+        return (
+            "llm_quota_exhausted", 502,
+            "LLM saglayicisinin kredisi/kotasi tukenmis. Saglayici hesabinizi kontrol edin.",
+        )
+    if "rate" in name.lower() or "429" in text:
+        return (
+            "llm_rate_limited", 503,
+            "LLM saglayicisi su an istek limitinde. Kisa bir sure sonra tekrar deneyin.",
+        )
+    return (
+        "llm_unavailable", 502,
+        f"LLM saglayicisina ulasilamadi ({name}). Ayrintilar sunucu loglarinda.",
     )
 
 

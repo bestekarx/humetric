@@ -9,8 +9,8 @@ from humetric.store import Store
 async def test_create_tenant(test_db):
     store = Store()
     tenant = await store.create_tenant(test_db, {
-        "kod": "store-test-tenant",
-        "ad": "Store Test",
+        "code": "store-test-tenant",
+        "name": "Store Test",
     })
     assert tenant.id is not None
     assert tenant.kod == "store-test-tenant"

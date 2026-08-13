@@ -13,17 +13,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from humetric.api import app
-from humetric.schema import (
-    EntityMetric,
-    EntityResponse,
-    SignalResult,
-    SignalStatus,
-    ApiKeyCreated,
-    ApiKeyInfo,
-    ApiKeyList,
-    QueryResponse,
-    RankedResult,
-)
+
+# NOT: burada bir zamanlar schema'dan toplu bir import vardi. Icindeki adlarin
+# hicbiri kullanilmiyordu ve dordu (EntityMetric, EntityResponse, ApiKeyInfo,
+# ApiKeyList) schema yeniden adlandirildiginda ortadan kalkmisti — bu da tum
+# dosyayi ImportError ile toplanamaz yapip pytest'in butun kosuyu durdurmasina
+# yol aciyordu. Ihtiyac duyan tek test (RankedResult) kendi icinde import ediyor.
 
 
 def _now():
@@ -88,7 +83,7 @@ async def fake_verify(key_str):
 def patch_auth_and_store(mock_store):
     import humetric.middleware.auth as auth_mod
     import humetric.store as store_mod
-    from humetric.db.engine import get_tenant_db as real_get_tenant_db
+    from humetric.db.database import get_tenant_db as real_get_tenant_db
 
     with patch.object(store_mod, "verify_and_get_api_key", side_effect=fake_verify):
         with patch.object(store_mod, "upsert_entity", new_callable=AsyncMock) as mock_upsert:

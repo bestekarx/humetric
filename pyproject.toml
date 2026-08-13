@@ -69,3 +69,9 @@ packages = ["src/humetric"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# database.py motoru modul seviyesinde global olarak cache'liyor, yani ilk
+# olusturuldugu event loop'a bagli kaliyor. Varsayilan (test basina yeni loop)
+# ile ikinci testten itibaren asyncpg baglantilari "attached to a different
+# loop" ile patliyordu. Tum testler ve fixture'lar tek loop paylasir.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -39,7 +40,11 @@ async def _seed_tenant_and_key():
     factory = get_async_session_factory()
     async with factory() as db:
         from humetric import auth as humetric_auth
-        tenant = await Store.create_tenant(db, {"kod": "test", "ad": "Test Tenant"})
+        # Her cagriya kendi tenant'i: bu yardimci 11 testten cagriliyor ve sabit
+        # code="test" kullandigi surece ilkinden sonrakiler unique kisitina
+        # takiliyor, patlayan INSERT session'i abort edip testi dusuruyordu.
+        code = f"test-{uuid.uuid4().hex[:12]}"
+        tenant = await Store.create_tenant(db, {"code": code, "name": "Test Tenant"})
         full_key, api_key = await Store.create_api_key(
             db, tenant_id=tenant.id, prefix="hm_live",
             label="test", scopes=["signals:write", "signals:read", "entities:read", "entities:write"],
@@ -190,7 +195,7 @@ async def test_different_tenant_same_key_isolated(client):
 
     factory = get_async_session_factory()
     async with factory() as db:
-        tenant2 = await Store.create_tenant(db, {"kod": "test2async", "ad": "Test2"})
+        tenant2 = await Store.create_tenant(db, {"code": "test2async", "name": "Test2"})
         from humetric import auth as humetric_auth
         full_key2, api_key2 = await Store.create_api_key(
             db, tenant_id=tenant2.id, prefix="hm_live",

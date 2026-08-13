@@ -33,7 +33,7 @@ async def test_sensitive_metric_excluded_from_embedding_text():
     """Sensitive metrics (e.g. mali_durum) must NOT appear in embedding text."""
     factory = get_async_session_factory()
     async with factory() as db:
-        tenant = await Store.create_tenant(db, {"kod": "emb1", "ad": "Embed Test"})
+        tenant = await Store.create_tenant(db, {"code": "emb1", "name": "Embed Test"})
         entity = await Store.upsert_entity(db, {
             "id": "ent-emb-1",
             "tenant_id": tenant.id,
@@ -68,7 +68,7 @@ async def test_non_sensitive_metric_in_embedding_text():
     """Non-sensitive metrics SHOULD appear in embedding text."""
     factory = get_async_session_factory()
     async with factory() as db:
-        tenant = await Store.create_tenant(db, {"kod": "emb2", "ad": "Embed Non-Sens"})
+        tenant = await Store.create_tenant(db, {"code": "emb2", "name": "Embed Non-Sens"})
         entity = await Store.upsert_entity(db, {
             "id": "ent-emb-2",
             "tenant_id": tenant.id,
@@ -104,7 +104,7 @@ async def test_consent_revocation_hides_sensitive_metric():
     factory = get_async_session_factory()
     async with factory() as db:
         from sqlalchemy import text
-        tenant = await Store.create_tenant(db, {"kod": "cnr1", "ad": "Consent Revoke"})
+        tenant = await Store.create_tenant(db, {"code": "cnr1", "name": "Consent Revoke"})
         await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(tenant.id)})
         entity = await Store.upsert_entity(db, {
             "id": "ent-cn-1",
@@ -157,7 +157,7 @@ async def test_admin_scope_sees_sensitive_metric_without_consent():
     factory = get_async_session_factory()
     async with factory() as db:
         from sqlalchemy import text
-        tenant = await Store.create_tenant(db, {"kod": "adm1", "ad": "Admin Scope"})
+        tenant = await Store.create_tenant(db, {"code": "adm1", "name": "Admin Scope"})
         await db.execute(text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(tenant.id)})
         entity = await Store.upsert_entity(db, {
             "id": "ent-ad-1",

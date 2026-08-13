@@ -11,8 +11,8 @@ from humetric.store import Store
 async def test_tenant_crud(test_db):
     store = Store()
     tenant = await store.create_tenant(test_db, {
-        "kod": "crud-test",
-        "ad": "CRUD Test Tenant",
+        "code": "crud-test",
+        "name": "CRUD Test Tenant",
     })
     assert tenant.id is not None
     assert tenant.kod == "crud-test"
@@ -175,7 +175,7 @@ async def test_rls_isolation(test_db, test_tenant):
     """Iki tenant — birinin entity'si digerinden gorunmemeli."""
     store = Store()
 
-    tenant_b = await store.create_tenant(test_db, {"kod": "isolation-b", "ad": "Tenant B"})
+    tenant_b = await store.create_tenant(test_db, {"code": "isolation-b", "name": "Tenant B"})
 
     await store.create_entity(test_db, {
         "id": "tenant-a-entity",
