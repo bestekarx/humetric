@@ -73,21 +73,12 @@ async def process_signal_task(db: AsyncSession, task) -> None:
     )
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
 
+    # Deterministic merge — see agents/curator.py:finalize_merge. The curator
+    # prompt's own rule is a confidence-weighted average formula, not a
+    # judgment call, so this removes a Sonnet call from every signal.
+    # curator_meta stays empty → trace records curator_model=None.
     curator_meta: dict = {}
-    if config.CURATOR_FAST_PATH_ENABLED and not existing_metrics:
-        # Cold-start fast-path: with no history to reconcile, the Sonnet curator
-        # is a near-deterministic pass-through. Finalize locally and skip the
-        # LLM call. curator_meta stays empty → trace records curator_model=None
-        # so the fast-path remains auditable.
-        final_metrics = curator.finalize_first_observation(extracted, pack_def)
-    else:
-        final_metrics = await curator.curate_metrics(
-            extracted, existing_metrics, ctx, pack_def,
-            tenant_id=task.tenant_id,
-            api_key=llm_key,
-            provider=llm_provider,
-            call_meta=curator_meta,
-        )
+    final_metrics = curator.finalize_merge(extracted, existing_metrics, pack_def)
 
     await _persist_signal_result(
         db, task, entity, extracted, final_metrics,

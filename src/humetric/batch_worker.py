@@ -6,19 +6,20 @@ queued, then exits::
 
     python -m humetric.batch_worker
 
-Because the extractor must run before the curator, batching is two-phase:
+Because the extractor must run before the curator, processing is two-phase:
 
-  Phase A  one Haiku extraction request per signal (batched).
-  Phase B  per signal: cold-start (no history) → local fast-path, no LLM;
-           otherwise one Sonnet curation request (batched).
+  Phase A  one Haiku extraction request per signal (batched via the Batches API).
+  Phase B  deterministic confidence-weighted merge against existing metrics —
+           see ``agents/curator.py:finalize_merge``. No LLM call; this phase
+           is local and instant.
 
 Then results are written and tasks completed, reusing the real-time worker's
 ``_persist_signal_result``. Tasks left in 'processing' by a crashed run are
 reclaimed on the next start.
 
 Caveat: within a single batch, multiple signals for the *same* entity all see
-the pre-batch snapshot as "no history", so all take the fast-path and
-``upsert_metric`` is last-write-wins (no cross-signal reconciliation).
+the pre-batch snapshot as "no history", so ``upsert_metric`` is last-write-wins
+(no cross-signal reconciliation within one batch).
 
 Pass ``--weekly`` to avoid that on historical loads: waves are then claimed one
 time window at a time (by ``signal.occurred_at``) with at most one signal per
@@ -39,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from . import config
 from .agents import base, curator, extractor
 from .agents.versioning import hash_prompt, hash_schema, hash_text
-from .schema import CurationResult, ExtractionResult
+from .schema import ExtractionResult
 from .store import Store
 from .worker import _persist_signal_result, handle_failure, resolve_occurred_at
 
@@ -177,59 +178,16 @@ async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> in
             c["extracted"] = base.parse_batch_result(msg, ExtractionResult, "extract_metrics").metrics
             usage_by_tenant[c["task"].tenant_id].append(msg)
 
-    # ── Phase B: cold-start fast-path vs curation ───────────────────────
-    to_curate: list[dict] = []
+    # ── Phase B: deterministic curation merge — no LLM call. See
+    # agents/curator.py:finalize_merge (confidence-weighted average, same
+    # formula the curator prompt used to ask an LLM to compute).
     for c in contexts:
         if c["error"]:
             continue
         await _set_tenant(db, c["task"].tenant_id)
         existing = await Store.get_entity_metrics(db, c["entity_id"], c["task"].tenant_id)
         c["existing_metrics"] = existing
-        if not existing:
-            # Cold-start fast-path — no LLM call.
-            c["final_metrics"] = curator.finalize_first_observation(c["extracted"], c["pack_def"])
-        elif not c["extracted"]:
-            c["final_metrics"] = []
-        else:
-            to_curate.append(c)
-
-    by_key2: dict[str, list[dict]] = defaultdict(list)
-    for c in to_curate:
-        by_key2[c["llm_key"]].append(c)
-
-    for key, group in by_key2.items():
-        requests = []
-        for c in group:
-            sys_prompt, user_prompt = curator.build_curate_inputs(
-                c["extracted"], c["existing_metrics"], c["ctx"], c["pack_def"],
-            )
-            c["curator_meta"] = {
-                "model": config.CURATOR_MODEL,
-                "prompt_hash": hash_prompt(sys_prompt),
-                "schema_hash": hash_schema(CurationResult),
-            }
-            requests.append(
-                base.build_batch_request(
-                    custom_id=str(c["task"].id),
-                    model=config.CURATOR_MODEL,
-                    system=sys_prompt,
-                    user=user_prompt,
-                    schema=CurationResult,
-                    tool_name="curate_metrics",
-                    tool_description="Validate the extracted metrics and determine final values",
-                )
-            )
-        results = await base.submit_and_await_batch(requests, api_key=key)
-        for c in group:
-            msg, err = _result_message(results.get(str(c["task"].id)))
-            if err:
-                c["error"] = f"curation {err}"
-                continue
-            result = base.parse_batch_result(msg, CurationResult, "curate_metrics")
-            c["final_metrics"] = curator.finalize_curation(
-                result, c["extracted"], c["existing_metrics"], c["pack_def"],
-            )
-            usage_by_tenant[c["task"].tenant_id].append(msg)
+        c["final_metrics"] = curator.finalize_merge(c["extracted"], existing, c["pack_def"])
 
     # ── Write phase ─────────────────────────────────────────────────────
     for c in contexts:

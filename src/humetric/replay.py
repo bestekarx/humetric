@@ -54,15 +54,11 @@ async def _run_curation(
     entity_context: str,
     pack_def: dict | None = None,
 ) -> tuple[list[FinalMetric], dict]:
-    call_meta: dict = {}
-    final_metrics = await curator.curate_metrics(
-        extracted,
-        [],
-        entity_context,
-        pack_def=pack_def,
-        call_meta=call_meta,
-    )
-    return final_metrics, call_meta
+    # Canary replay always curates against an empty history (no entity to
+    # look up), so this is a first-observation finalize — deterministic,
+    # no LLM call. See agents/curator.py:finalize_merge.
+    final_metrics = curator.finalize_merge(extracted, [], pack_def)
+    return final_metrics, {}
 
 
 def _value_in_range(value: float, vr: list[float]) -> bool:
@@ -255,7 +251,7 @@ async def _replay_canary(canary: dict, pack_def: dict | None = None) -> dict:
         "prompt_hash": prompt_hash_val,
         "schema_hash": schema_hash_val,
         "model": config.AGENT_MODEL,
-        "curator_model": config.CURATOR_MODEL,
+        "curator_model": None,  # deterministic merge, no LLM call
         "summary": summary,
         "per_signal": per_signal,
     }

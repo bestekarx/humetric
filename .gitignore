@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 __pycache__/
 *.pyc
 *.pyo
@@ -22,3 +24,33 @@ lakehouse/
 
 # Local Claude Code notes (server IPs etc.) - never commit
 CLAUDE.local.md
+
+# video/demo production tooling — dev-only, not part of the humetric backend
+scripts/video/
+scripts/demo.sh
+scripts/walkthrough.sh
+scripts/walkthrough_timeline.py
+scripts/voiceover.py
+scripts/reels.py
+scripts/make-captions.py
+scripts/youtube-live-demo.sh
+docs/assets/demo.raw.*
+docs/assets/walkthrough.raw.*
+docs/assets/video/
+docs/assets/demo.gif
+docs/assets/walkthrough.mp4
+*.storage.json
+
+# scratch plan docs / sample packs — not part of the metric pipeline
+docs/plans/tanitim-ve-sosyal-medya.md
+docs/plans/video-sistemi-envanter-ve-senaryolar.md
+docs/plans/yildiz-open-innovation-basvuru.md
+docs/plans/youtube-yorum-segmentler/
+docs/plans/youtube-yorum-video-uyum-senaryo.md
+packs/demo-worker-full.yaml
+packs/demo-worker.yaml
+packs/youtube-yorum.yaml
+
+# local-only Postman payloads with real third-party content (e.g. full video
+# transcripts) — never commit copyrighted source text to this public repo
+postman/*.local.json
