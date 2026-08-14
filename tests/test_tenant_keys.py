@@ -19,10 +19,18 @@ from humetric.schema import TenantKeysUpdate
 
 # ── Bug #1 / beta lock: llm_provider validation ─────────────────────────────
 
-def test_llm_provider_openai_rejected_under_beta_lock():
-    # Default ENABLED_LLM_PROVIDERS is ["anthropic"], so a valid-but-disabled
-    # provider must be rejected at the schema layer (FastAPI → 422).
-    assert config.ENABLED_LLM_PROVIDERS == ["anthropic"]
+def test_llm_provider_all_four_enabled_by_default():
+    # All four providers are enabled out of the box; a deployment narrows
+    # this via HUMETRIC_ENABLED_LLM_PROVIDERS (see test below).
+    assert config.ENABLED_LLM_PROVIDERS == ["anthropic", "openai", "google", "deepseek"]
+    assert TenantKeysUpdate(llm_provider="openai").llm_provider == "openai"
+
+
+def test_llm_provider_rejected_when_restricted_via_env(monkeypatch):
+    # A deployment that narrows ENABLED_LLM_PROVIDERS (e.g. anthropic-only)
+    # must still reject a disabled-but-otherwise-valid provider at the
+    # schema layer (FastAPI → 422).
+    monkeypatch.setattr(config, "ENABLED_LLM_PROVIDERS", ["anthropic"])
     with pytest.raises(ValidationError):
         TenantKeysUpdate(llm_provider="openai")
 
@@ -61,11 +69,12 @@ async def test_get_tenant_llm_config_disabled_provider_falls_back(monkeypatch):
     from humetric.store import Store
 
     async def fake_get_tenant_keys(db, tenant_id):
-        return {"llm_provider": "openai"}  # disabled under beta lock
+        return {"llm_provider": "openai"}  # disabled by this deployment's restricted list
 
     async def fake_decrypt(db, tenant_id, key_type):
         return None  # tenant has no key for the disabled provider
 
+    monkeypatch.setattr(config, "ENABLED_LLM_PROVIDERS", ["anthropic"])
     monkeypatch.setattr(Store, "get_tenant_keys", staticmethod(fake_get_tenant_keys))
     monkeypatch.setattr(Store, "decrypt_tenant_key", staticmethod(fake_decrypt))
     monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "sk-platform")

@@ -8,7 +8,12 @@ queued, then exits::
 
 Because the extractor must run before the curator, processing is two-phase:
 
-  Phase A  one Haiku extraction request per signal (batched via the Batches API).
+  Phase A  one extraction request per signal. Anthropic-provider tenants are
+           batched via the Anthropic Message Batches API (50% cost). Tenants
+           on another provider (openai/google/deepseek — none of which expose
+           an equivalent batch endpoint here) fall back to a synchronous
+           per-signal ``structured_call_multi`` call so their `llm_provider`
+           choice is still honored.
   Phase B  deterministic confidence-weighted merge against existing metrics —
            see ``agents/curator.py:finalize_merge``. No LLM call; this phase
            is local and instant.
@@ -39,6 +44,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config
 from .agents import base, curator, extractor
+from .agents.base import get_tenant_llm_config
+from .agents.multi_llm import structured_call_multi
 from .agents.versioning import hash_prompt, hash_schema, hash_text
 from .schema import ExtractionResult
 from .store import Store
@@ -79,7 +86,7 @@ async def _prepare_task(db: AsyncSession, task) -> dict | None:
         await Store.fail_task_permanently(db, task.id, f"Entity not found: {entity_id}")
         return None
 
-    llm_key = await base.get_tenant_llm_key(task.tenant_id, db)
+    llm_provider, llm_key = await get_tenant_llm_config(task.tenant_id, db)
 
     signal_text = signal_text_in or json.dumps(
         payload.get("structured", {}), sort_keys=True, ensure_ascii=False
@@ -106,11 +113,12 @@ async def _prepare_task(db: AsyncSession, task) -> dict | None:
         "ctx": ctx,
         "input_hash": input_hash,
         "occurred_at": resolve_occurred_at(task, signal),
+        "llm_provider": llm_provider,
         "llm_key": llm_key,
         "extract_system": sys_prompt,
         "extract_user": user_prompt,
         "extract_meta": {
-            "model": config.AGENT_MODEL,
+            "model": config.get_extractor_model(llm_provider),
             "prompt_hash": hash_prompt(sys_prompt),
             "schema_hash": hash_schema(ExtractionResult),
         },
@@ -151,16 +159,19 @@ async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> in
 
     usage_by_tenant: dict[int, list] = defaultdict(list)
 
-    # ── Phase A: extraction batch (grouped by LLM key) ──────────────────
+    anthropic_contexts = [c for c in contexts if c["llm_provider"] == "anthropic"]
+    other_contexts = [c for c in contexts if c["llm_provider"] != "anthropic"]
+
+    # ── Phase A1: Anthropic tenants — native Batches API (grouped by key) ──
     by_key: dict[str, list[dict]] = defaultdict(list)
-    for c in contexts:
+    for c in anthropic_contexts:
         by_key[c["llm_key"]].append(c)
 
     for key, group in by_key.items():
         requests = [
             base.build_batch_request(
                 custom_id=str(c["task"].id),
-                model=config.AGENT_MODEL,
+                model=c["extract_meta"]["model"],
                 system=c["extract_system"],
                 user=c["extract_user"],
                 schema=ExtractionResult,
@@ -177,6 +188,26 @@ async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> in
                 continue
             c["extracted"] = base.parse_batch_result(msg, ExtractionResult, "extract_metrics").metrics
             usage_by_tenant[c["task"].tenant_id].append(msg)
+
+    # ── Phase A2: other providers — no native batch endpoint, so fall back
+    # to a synchronous per-signal structured_call_multi so the tenant's
+    # llm_provider choice is still honored.
+    for c in other_contexts:
+        try:
+            result = await structured_call_multi(
+                provider=c["llm_provider"],
+                model=c["extract_meta"]["model"],
+                api_key=c["llm_key"],
+                system=c["extract_system"],
+                user=c["extract_user"],
+                schema=ExtractionResult,
+                tool_name="extract_metrics",
+                tool_description="Extract metrics from the signal text",
+                tenant_id=c["task"].tenant_id,
+            )
+            c["extracted"] = result.metrics
+        except Exception as exc:
+            c["error"] = f"extraction {exc}"
 
     # ── Phase B: deterministic curation merge — no LLM call. See
     # agents/curator.py:finalize_merge (confidence-weighted average, same

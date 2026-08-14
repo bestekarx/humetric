@@ -10,6 +10,7 @@ import logging
 from .. import config, telemetry
 from ..schema import PackDefinition, PackWizardResponse
 from . import _load_prompt
+from .multi_llm import structured_call_multi
 
 _log = logging.getLogger(__name__)
 
@@ -18,22 +19,28 @@ if not _DEFAULT_SYSTEM:
     _DEFAULT_SYSTEM = "You are a Metric Pack design expert. Generate a YAML metric pack from the domain description."
 
 
-async def generate_pack_yaml(text: str, entity_type_hint: str | None = None, tenant_id: int | None = None, api_key: str | None = None) -> PackWizardResponse:
+async def generate_pack_yaml(
+    text: str,
+    entity_type_hint: str | None = None,
+    tenant_id: int | None = None,
+    api_key: str | None = None,
+    provider: str | None = None,
+) -> PackWizardResponse:
     """Generate a pack YAML from free-text description."""
-    from .base import structured_call
-
     user_msg = f"Domain description: {text}"
     if entity_type_hint:
         user_msg += f"\nSuggested entity_type: {entity_type_hint}"
 
-    model = getattr(config, "WIZARD_MODEL", config.AGENT_MODEL)
+    resolved_provider = provider or "anthropic"
+    model = config.get_wizard_model(resolved_provider)
     start = __import__("time").time()
     yaml_text = ""
     validation_errors: list[str] = []
     confidence = 0.5
 
     try:
-        result = await structured_call(
+        result = await structured_call_multi(
+            provider=resolved_provider,
             model=model,
             system=_DEFAULT_SYSTEM,
             user=user_msg,

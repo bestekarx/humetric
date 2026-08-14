@@ -1325,11 +1325,12 @@ async def create_pack_wizard(
     from .agents.base import get_tenant_llm_config
 
     try:
-        _llm_provider, llm_key = await get_tenant_llm_config(request.state.tenant_id, db)
+        llm_provider, llm_key = await get_tenant_llm_config(request.state.tenant_id, db)
         result = await generate_pack_yaml(
             body.text, body.entity_type_hint,
             tenant_id=request.state.tenant_id,
             api_key=llm_key,
+            provider=llm_provider,
         )
         return result
     except Exception as exc:

@@ -53,17 +53,23 @@ WIZARD_MODEL = os.environ.get("HUMETRIC_WIZARD_MODEL", "claude-haiku-4-5-2025100
 # an LLM call.
 OPENAI_AGENT_MODEL = os.environ.get("HUMETRIC_OPENAI_AGENT_MODEL", "gpt-4o-mini")
 OPENAI_RANKER_MODEL = os.environ.get("HUMETRIC_OPENAI_RANKER_MODEL", "gpt-4o")
+OPENAI_WIZARD_MODEL = os.environ.get("HUMETRIC_OPENAI_WIZARD_MODEL", "gpt-4o-mini")
 GOOGLE_AGENT_MODEL = os.environ.get("HUMETRIC_GOOGLE_AGENT_MODEL", "gemini-1.5-flash")
 GOOGLE_RANKER_MODEL = os.environ.get("HUMETRIC_GOOGLE_RANKER_MODEL", "gemini-1.5-pro")
+GOOGLE_WIZARD_MODEL = os.environ.get("HUMETRIC_GOOGLE_WIZARD_MODEL", "gemini-1.5-flash")
 DEEPSEEK_AGENT_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_AGENT_MODEL", "deepseek-chat")
 DEEPSEEK_RANKER_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_RANKER_MODEL", "deepseek-chat")
+DEEPSEEK_WIZARD_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_WIZARD_MODEL", "deepseek-chat")
 
-# BYOK: beta allows anthropic only; expand with comma-separated list.
-# To enable all 4 providers with a single env var:
-# HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic,openai,google,deepseek
+# All 4 providers are enabled by default; set this to a narrower
+# comma-separated list to restrict a deployment to a subset (e.g. "anthropic"
+# only). It gates both TenantKeysUpdate.llm_provider validation (schema.py)
+# and get_tenant_llm_config's fallback (agents/base.py).
 ENABLED_LLM_PROVIDERS = [
     p.strip()
-    for p in os.environ.get("HUMETRIC_ENABLED_LLM_PROVIDERS", "anthropic").split(",")
+    for p in os.environ.get(
+        "HUMETRIC_ENABLED_LLM_PROVIDERS", "anthropic,openai,google,deepseek"
+    ).split(",")
     if p.strip()
 ]
 
@@ -86,6 +92,16 @@ def get_ranker_model(provider: str) -> str:
     if provider == "deepseek":
         return DEEPSEEK_RANKER_MODEL
     return MATCHMAKER_MODEL
+
+
+def get_wizard_model(provider: str) -> str:
+    if provider == "openai":
+        return OPENAI_WIZARD_MODEL
+    if provider == "google":
+        return GOOGLE_WIZARD_MODEL
+    if provider == "deepseek":
+        return DEEPSEEK_WIZARD_MODEL
+    return WIZARD_MODEL
 
 TOP_K = int(os.environ.get("HUMETRIC_TOP_K", "10"))
 RETRIEVE_K = int(os.environ.get("HUMETRIC_RETRIEVE_K", "50"))
