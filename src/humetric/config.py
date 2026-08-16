@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[3]
 LOGS_DIR = ROOT / "logs"
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-DATABASE_URL_APP = os.environ.get("DATABASE_URL_APP", "") or DATABASE_URL
+DATABASE_URL_APP = os.environ.get("DATABASE_URL_APP", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
 AUTH_SECRET = os.environ.get("HUMETRIC_AUTH_SECRET", "")
@@ -241,6 +241,7 @@ def require_db() -> None:
         name
         for name, value in (
             ("DATABASE_URL", DATABASE_URL),
+            ("DATABASE_URL_APP", DATABASE_URL_APP),
             ("HUMETRIC_AUTH_SECRET", AUTH_SECRET),
         )
         if not value
