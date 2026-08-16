@@ -18,6 +18,7 @@ EXPECTED_TOOLS = {
     "humetric_explain_metric",
     "humetric_metric_history",
     "humetric_query_entities",
+    "humetric_call_history",
     "humetric_list_packs",
     "humetric_get_pack",
     "humetric_create_pack",

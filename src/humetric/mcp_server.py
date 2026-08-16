@@ -39,10 +39,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextvars
 import json
 import logging
 import os
 import sys
+import uuid
 from typing import Annotated, Any
 
 import httpx
@@ -61,6 +63,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 _log = logging.getLogger("humetric.mcp")
+
+# Not imported from the package (this module is intentionally standalone —
+# see the file header); api.py likewise keeps its own __version__.
+__version__ = "1.0.0"
 
 BASE_URL = os.environ.get("HUMETRIC_BASE_URL", "http://localhost:8002").rstrip("/")
 TIMEOUT_S = float(os.environ.get("HUMETRIC_MCP_TIMEOUT_S", "30"))
@@ -118,7 +124,18 @@ async def _request(
             "yeniden baslatin."
         )
 
-    headers = {"Content-Type": "application/json"}
+    # These headers flow into the API's usage_record and make "which key
+    # called which tool" answerable. Descriptive data only: the tenant and
+    # key identity are resolved from Authorization, not from these.
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": f"humetric-mcp/{__version__}",
+        "X-HuMetric-Client": "mcp",
+    }
+    if tool := _current_tool.get():
+        headers["X-HuMetric-Tool"] = tool
+    if call_id := _current_call_id.get():
+        headers["X-HuMetric-Call-Id"] = call_id
     if authenticated:
         headers["Authorization"] = f"Bearer {key}"
 
@@ -248,7 +265,42 @@ WRITES = ToolAnnotations(readOnlyHint=False, destructiveHint=False)
 DESTRUCTIVE = ToolAnnotations(readOnlyHint=False, destructiveHint=True)
 
 
-server = MCPServer(
+# ── Call identity ───────────────────────────────────────────────────────────
+#
+# The API side couldn't distinguish a request coming from MCP from one
+# coming from curl; these two contextvars and the subclass below fix that.
+# No need to touch all 25 tool functions to capture the tool name:
+# FastMCP.call_tool is the single pass-through point for every call, so
+# overriding it is enough.
+
+_current_tool: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "humetric_mcp_tool", default=""
+)
+_current_call_id: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "humetric_mcp_call_id", default=""
+)
+
+
+class InstrumentedMCP(MCPServer):
+    """Names every tool call and tags it with a single call_id.
+
+    Why call_id is needed: a single tool call can trigger multiple HTTP
+    requests — humetric_health fires three separate /healthz* requests.
+    Counting requests would make the user's one call look like three;
+    the shared call_id groups them back into a single call.
+    """
+
+    async def call_tool(self, name: str, arguments: dict[str, Any]):
+        tool_token = _current_tool.set(name)
+        call_token = _current_call_id.set(uuid.uuid4().hex)
+        try:
+            return await super().call_tool(name, arguments)
+        finally:
+            _current_tool.reset(tool_token)
+            _current_call_id.reset(call_token)
+
+
+server = InstrumentedMCP(
     name="humetric",
     instructions="""
 HuMetric: Sinyallerden varlik metrikleri ureten agentik metrik motoru.
@@ -642,6 +694,39 @@ async def humetric_usage_report(
 ) -> str:
     return _render(await _request(
         "GET", f"{API_PREFIX}/usage", params={"start_date": start_date, "end_date": end_date}
+    ))
+
+
+@server.tool(
+    description=(
+        "Call history: which API key called which MCP tool how many times, "
+        "how long it took, how many errored. humetric_usage_report gives daily "
+        "volume; this tool gives a per-request breakdown. "
+        "tool_calls counts a tool call, http_requests counts the underlying "
+        "requests fired — the difference between the two comes from tools that make many requests."
+    ),
+    annotations=READ_ONLY,
+)
+async def humetric_call_history(
+    start_date: Annotated[str, Field(description="Start date (YYYY-MM-DD).")],
+    end_date: Annotated[str, Field(description="End date (YYYY-MM-DD).")],
+    group_by: Annotated[
+        str,
+        Field(description="Grouping axis: tool | key | client | endpoint | day | none."),
+    ] = "tool",
+    client: Annotated[
+        str | None,
+        Field(description="Filter by channel: 'mcp', 'rest', 'dashboard'."),
+    ] = None,
+    tool_name: Annotated[str | None, Field(description="Filter by a single tool.")] = None,
+    limit: Annotated[int, Field(description="How many records (1-200).", ge=1, le=200)] = 50,
+) -> str:
+    return _render(await _request(
+        "GET", f"{API_PREFIX}/usage/calls",
+        params={
+            "start_date": start_date, "end_date": end_date, "group_by": group_by,
+            "client": client, "tool_name": tool_name, "limit": limit,
+        },
     ))
 
 
