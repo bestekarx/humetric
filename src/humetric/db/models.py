@@ -295,6 +295,17 @@ class UsageRecord(Base):
     endpoint: Mapped[str] = mapped_column(String(100), nullable=False)
     method: Mapped[str] = mapped_column(String(10), nullable=False)
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Which surface issued the call: 'mcp', 'rest', 'dashboard'. Client-supplied
+    # (validated against a whitelist), so NULL means "did not identify itself".
+    client: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # MCP tool name, only ever set when client == 'mcp'.
+    tool_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Groups the HTTP requests belonging to one MCP tool call — a single tool
+    # can fan out to several requests (humetric_health issues three), so
+    # counting rows overstates tool usage. COUNT(DISTINCT call_id) is the
+    # tool-call count; COUNT(*) is the request count.
+    call_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )
@@ -303,6 +314,8 @@ class UsageRecord(Base):
         Index("ix_usage_record_tenant", "tenant_id"),
         Index("ix_usage_record_api_key", "api_key_id"),
         Index("ix_usage_record_created_at", "created_at"),
+        Index("ix_usage_record_key_time", "tenant_id", "api_key_id", "created_at"),
+        Index("ix_usage_record_client_time", "tenant_id", "client", "created_at"),
     )
 
 

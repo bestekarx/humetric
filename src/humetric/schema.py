@@ -803,6 +803,40 @@ class UsageReportResponse(BaseModel):
     total: UsageRecordOut | None = None
 
 
+class CallUsageOut(BaseModel):
+    """One row of the call report.
+
+    Which fields are populated depends on ``group_by``: grouping by tool leaves
+    ``api_key_id`` empty and vice versa. ``tool_calls`` and ``http_requests``
+    differ whenever a single MCP tool fans out to several requests.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    group: str
+    tool_calls: int = 0
+    http_requests: int = 0
+    error_count: int = 0
+    avg_duration_ms: int | None = None
+    client: str | None = None
+    tool_name: str | None = None
+    api_key_id: int | None = None
+    api_key_label: str | None = None
+    endpoint: str | None = None
+    date: str | None = None
+
+
+class CallUsageResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    tenant_id: int
+    start_date: str
+    end_date: str
+    group_by: str
+    records: list[CallUsageOut] = []
+    total: CallUsageOut | None = None
+
+
 class TierLimitExceededResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

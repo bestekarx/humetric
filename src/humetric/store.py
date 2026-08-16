@@ -9,9 +9,9 @@ from __future__ import annotations
 import base64
 import logging
 import os as _os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select, text, update
+from sqlalchemy import String, desc, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import auth, config
@@ -319,6 +319,130 @@ class Store:
         db.add(record)
         await db.commit()
         return record
+
+    # Dimensions the call report can group on, mapped to the column that
+    # carries the group label. Anything outside this dict is rejected by the
+    # endpoint before it reaches SQL.
+    USAGE_GROUP_COLUMNS = {
+        "tool": UsageRecord.tool_name,
+        "client": UsageRecord.client,
+        "key": UsageRecord.api_key_id,
+        "endpoint": UsageRecord.endpoint,
+        "day": func.date(UsageRecord.created_at),
+    }
+
+    @staticmethod
+    async def aggregate_usage_calls(
+        db: AsyncSession,
+        tenant_id: int,
+        *,
+        start_date: date,
+        end_date: date,
+        group_by: str,
+        client: str | None = None,
+        api_key_id: int | None = None,
+        tool_name: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Grouped call counts over usage_record.
+
+        ``tool_calls`` counts distinct call_ids, falling back to the row id when
+        a request carries none: one MCP tool call fans out to several requests
+        and must count once, while a plain REST request has no call_id and is a
+        call in its own right. ``http_requests`` is the raw row count, so the
+        gap between the two columns is the fan-out.
+        """
+        group_col = Store.USAGE_GROUP_COLUMNS[group_by]
+
+        # COALESCE to the row id keeps call-less requests from collapsing into
+        # a single NULL group and vanishing from the count.
+        call_key = func.coalesce(
+            UsageRecord.call_id, func.cast(UsageRecord.id, String)
+        )
+
+        q = (
+            select(
+                group_col.label("group_value"),
+                func.count(func.distinct(call_key)).label("tool_calls"),
+                func.count().label("http_requests"),
+                func.count().filter(UsageRecord.status_code >= 400).label("error_count"),
+                func.avg(UsageRecord.duration_ms).label("avg_duration_ms"),
+            )
+            .where(
+                UsageRecord.tenant_id == tenant_id,
+                func.date(UsageRecord.created_at) >= start_date,
+                func.date(UsageRecord.created_at) <= end_date,
+            )
+            .group_by(group_col)
+            .order_by(desc("http_requests"))
+            .limit(limit)
+            .offset(offset)
+        )
+        if client:
+            q = q.where(UsageRecord.client == client)
+        if api_key_id is not None:
+            q = q.where(UsageRecord.api_key_id == api_key_id)
+        if tool_name:
+            q = q.where(UsageRecord.tool_name == tool_name)
+
+        rows = (await db.execute(q)).all()
+        out = [
+            {
+                "group": "(none)" if r.group_value is None else str(r.group_value),
+                "tool_calls": r.tool_calls or 0,
+                "http_requests": r.http_requests or 0,
+                "error_count": r.error_count or 0,
+                "avg_duration_ms": int(r.avg_duration_ms) if r.avg_duration_ms is not None else None,
+            }
+            for r in rows
+        ]
+
+        # A bare key id is unreadable in a report; the label is what identifies
+        # the human behind it. Looked up separately rather than joined so the
+        # aggregate query stays the same shape for every grouping.
+        if group_by == "key":
+            ids = [int(r["group"]) for r in out if r["group"] != "(none)"]
+            if ids:
+                labels = dict(
+                    (await db.execute(
+                        select(ApiKey.id, ApiKey.label).where(ApiKey.id.in_(ids))
+                    )).all()
+                )
+                for row in out:
+                    if row["group"] != "(none)":
+                        row["api_key_label"] = labels.get(int(row["group"]))
+
+        return out
+
+    @staticmethod
+    async def list_usage_calls(
+        db: AsyncSession,
+        tenant_id: int,
+        *,
+        start_date: date,
+        end_date: date,
+        client: str | None = None,
+        api_key_id: int | None = None,
+        tool_name: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[UsageRecord]:
+        """Ungrouped rows, newest first — the group_by=none path."""
+        q = select(UsageRecord).where(
+            UsageRecord.tenant_id == tenant_id,
+            func.date(UsageRecord.created_at) >= start_date,
+            func.date(UsageRecord.created_at) <= end_date,
+        )
+        if client:
+            q = q.where(UsageRecord.client == client)
+        if api_key_id is not None:
+            q = q.where(UsageRecord.api_key_id == api_key_id)
+        if tool_name:
+            q = q.where(UsageRecord.tool_name == tool_name)
+
+        q = q.order_by(desc(UsageRecord.created_at)).limit(limit).offset(offset)
+        return list((await db.execute(q)).scalars().all())
 
     # --- ApiKey ---
 

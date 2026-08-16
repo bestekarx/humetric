@@ -32,6 +32,7 @@ from .middleware.auth import AuthMiddleware
 from .middleware.billing_guard import BillingGuardMiddleware
 from .middleware.metrics import PrometheusMiddleware
 from .middleware.rate_limit import RateLimitMiddleware
+from .middleware.usage import UsageMiddleware
 from .services.captcha_service import verify_captcha
 from .services.email_service import send_verification_email, send_welcome_email
 from .services.usage_service import (
@@ -42,6 +43,8 @@ from .schema import (
     ApiKeyCreate,
     ApiKeyListResponse,
     ApiKeyRead,
+    CallUsageOut,
+    CallUsageResponse,
     CheckoutResponse,
     ConsentCreate,
     ConsentRead,
@@ -1931,6 +1934,128 @@ async def tenant_usage(
     return await _build_usage_report(db, tenant_id, start_date, end_date)
 
 
+@app.get(f"{V1_PREFIX}/usage/calls", tags=["Usage"])
+async def tenant_usage_calls(
+    start_date: str,
+    end_date: str,
+    request: Request,
+    group_by: str = "tool",
+    client: str | None = None,
+    api_key_id: int | None = None,
+    tool_name: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    """Per-call usage: who called which surface/tool, how often, how fast.
+
+    Complements /v1/usage, which reports daily signal/token/embedding volume.
+    This one reports request-level activity — the view that makes MCP usage
+    visible per API key.
+    """
+    _require_scope(request, "tenant:admin")
+    return await _build_call_report(
+        db,
+        request.state.tenant_id,
+        start_date,
+        end_date,
+        group_by=group_by,
+        client=client,
+        api_key_id=api_key_id,
+        tool_name=tool_name,
+        limit=limit,
+        offset=offset,
+    )
+
+
+async def _build_call_report(
+    db: AsyncSession,
+    tenant_id: int,
+    start_date_str: str,
+    end_date_str: str,
+    *,
+    group_by: str,
+    client: str | None,
+    api_key_id: int | None,
+    tool_name: str | None,
+    limit: int,
+    offset: int,
+) -> dict:
+    if group_by != "none" and group_by not in Store.USAGE_GROUP_COLUMNS:
+        allowed = ", ".join([*Store.USAGE_GROUP_COLUMNS, "none"])
+        raise HTTPException(
+            status_code=400,
+            detail=error_envelope(
+                "invalid_group_by", f"group_by must be one of: {allowed}"
+            ).model_dump(),
+        )
+
+    start_date = date.fromisoformat(start_date_str)
+    end_date = date.fromisoformat(end_date_str)
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+
+    filters = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "client": client,
+        "api_key_id": api_key_id,
+        "tool_name": tool_name,
+        "limit": limit,
+        "offset": offset,
+    }
+
+    if group_by == "none":
+        rows = await Store.list_usage_calls(db, tenant_id, **filters)
+        records = [
+            CallUsageOut(
+                group=r.created_at.isoformat(),
+                tool_calls=1,
+                http_requests=1,
+                error_count=1 if r.status_code >= 400 else 0,
+                avg_duration_ms=r.duration_ms,
+                client=r.client,
+                tool_name=r.tool_name,
+                api_key_id=r.api_key_id,
+                endpoint=r.endpoint,
+                date=r.created_at.date().isoformat(),
+            )
+            for r in rows
+        ]
+    else:
+        grouped = await Store.aggregate_usage_calls(
+            db, tenant_id, group_by=group_by, **filters
+        )
+        # Only the grouping dimension is meaningful per row; the label is
+        # echoed into its own field so clients need not re-parse `group`.
+        field = {"tool": "tool_name", "client": "client", "endpoint": "endpoint",
+                 "day": "date"}.get(group_by)
+        records = []
+        for g in grouped:
+            extra: dict = {}
+            if field:
+                extra[field] = None if g["group"] == "(none)" else g["group"]
+            elif group_by == "key":
+                extra["api_key_id"] = None if g["group"] == "(none)" else int(g["group"])
+            records.append(CallUsageOut(**g, **extra))
+
+    total = CallUsageOut(
+        group=f"{start_date_str}..{end_date_str}",
+        tool_calls=sum(r.tool_calls for r in records),
+        http_requests=sum(r.http_requests for r in records),
+        error_count=sum(r.error_count for r in records),
+    )
+
+    return CallUsageResponse(
+        tenant_id=tenant_id,
+        start_date=start_date_str,
+        end_date=end_date_str,
+        group_by=group_by,
+        records=records,
+        total=total,
+    ).model_dump()
+
+
 @app.get(f"{V1_PREFIX}/admin/usage", tags=["Usage"])
 async def admin_usage(
     tenant: str,
@@ -2054,9 +2179,15 @@ async def list_pending_reviews(
 # add_middleware() call wraps the previous stack). Auth must run first so
 # request.state.tenant_id exists before RateLimit/BillingGuard read it —
 # registering Auth last here is what makes it execute first.
+#
+# Usage sits between Auth and RateLimit: after Auth so request.state carries
+# the tenant and key, but outside RateLimit and BillingGuard so a rejected
+# request (429, 402) is still recorded — those rejections are exactly the ones
+# a usage report needs to show.
 app.add_middleware(PrometheusMiddleware)
 app.add_middleware(BillingGuardMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(UsageMiddleware)
 app.add_middleware(AuthMiddleware)
 
 
