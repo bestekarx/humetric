@@ -1,8 +1,9 @@
-"""GET /v1/entities/{id}/metrics/{key}/explain testleri.
+"""GET /v1/entities/{id}/metrics/{key}/explain tests.
 
-trace_data.extracted[].reasoning + .source_span DB'de yazılı ama hiçbir endpoint
-döndürmüyordu (K3 -> explain endpoint). Diğer worker testleri gibi FastAPI route
-fonksiyonu doğrudan çağrılır, Store metotları patch'lenir (ASGI client'a gerek yok).
+trace_data.extracted[].reasoning + .source_span were written to the DB but no
+endpoint returned them (K3 -> explain endpoint). As in the other worker tests,
+the FastAPI route function is called directly and Store methods are patched
+(no ASGI client needed).
 """
 
 from __future__ import annotations

@@ -1,2 +1,2 @@
-"""Sektör senaryo tanımları."""
+"""Sector scenario definitions."""
 

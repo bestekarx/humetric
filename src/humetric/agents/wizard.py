@@ -98,9 +98,9 @@ def _pack_definition_to_yaml(pack: PackDefinition) -> str:
             md["visible_to"] = m.visible_to
         metrics.append(md)
 
-    # required_fields list[str | PackFieldDef] olabilir; Pydantic objelerini
-    # duz dict'e cevir, aksi halde yaml.dump !!python/object tag'i yazar ve
-    # safe_load ile geri okunamaz.
+    # required_fields can be list[str | PackFieldDef]; convert Pydantic objects
+    # to plain dicts, otherwise yaml.dump writes a !!python/object tag that
+    # can't be read back with safe_load.
     required_fields = []
     for rf in pack.required_fields:
         if isinstance(rf, str):

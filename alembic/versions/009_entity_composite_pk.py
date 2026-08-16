@@ -22,7 +22,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # --- child FK'leri once dusur (entity PK degisecek) ---
+    # --- drop child FKs first (entity PK is about to change) ---
     op.drop_constraint("entity_metric_entity_id_fkey", "entity_metric", type_="foreignkey")
     op.drop_constraint("signal_entity_id_fkey", "signal", type_="foreignkey")
     op.drop_constraint("consent_entity_id_fkey", "consent", type_="foreignkey")

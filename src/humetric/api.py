@@ -155,16 +155,16 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 
-# LLM saglayicisinin reddettigi istekler (gecersiz anahtar, bitmis kredi, oran
-# siniri) bu handler olmadan islenmemis istisna olarak kabarip istemciye duz
-# metin "Internal Server Error" ve HTTP 500 olarak donuyordu. Ne durum kodu ne
-# govde gercegi soyluyordu: cagiran taraf — ozellikle MCP uzerinden calisan bir
-# agent — "sunucu bozuk" ile "anahtarinizin suresi dolmus" arasindaki farki
-# goremiyordu. Sorun yukaridaki saglayicida oldugu icin dogru kod 502.
+# Requests rejected by the LLM provider (invalid key, exhausted credit, rate
+# limit) used to bubble up as an unhandled exception without this handler and
+# return plain-text "Internal Server Error" with HTTP 500 to the client.
+# Neither the status code nor the body told the truth: the caller — especially
+# an agent running over MCP — couldn't tell "the server is broken" apart from
+# "your key has expired". Since the problem is upstream, the correct code is 502.
 @app.exception_handler(anthropic.APIError)
 async def llm_provider_exception_handler(request: Request, exc: anthropic.APIError):
     code, status, message = _classify_llm_error(exc)
-    _log.error("LLM saglayici hatasi (%s): %s", code, exc)
+    _log.error("LLM provider error (%s): %s", code, exc)
     return JSONResponse(
         status_code=status,
         content=error_envelope(code, message).model_dump(),
@@ -534,8 +534,8 @@ async def explain_metric(
         db=db, entity_id=entity_id, tenant_id=tenant_id,
     )
     if not visible:
-        # KVKK: hassas ve gizli bir metrik için varlığını sızdırmamak amacıyla 404
-        # (403 değil).
+        # KVKK: return 404 (not 403) for a sensitive/restricted metric so its
+        # existence is not leaked.
         raise HTTPException(
             status_code=404,
             detail=error_envelope("metric_not_found", f"Metric not found: {metric_key}").model_dump(),
@@ -1770,8 +1770,8 @@ async def tenant_dashboard(
     if not tenant:
         raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
 
-    # Süresi dolan deneme, worker süpürmesini beklemeden burada düşürülür —
-    # dashboard hiçbir zaman bitmiş bir denemeyi Pro olarak göstermez.
+    # An expired trial is dropped here without waiting for the worker sweep —
+    # the dashboard must never show a finished trial as Pro.
     await apply_trial_expiry(db, tenant)
 
     today = date.today()
@@ -1816,7 +1816,7 @@ async def start_pro_trial(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
-    """3 aylık ücretsiz Pro denemesini başlat (tenant başına bir kez)."""
+    """Start the 3-month free Pro trial (once per tenant)."""
     from .services.trial_service import TrialError, apply_trial_expiry, days_left, start_trial
 
     _require_scope(request, "tenant:admin")

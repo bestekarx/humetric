@@ -1,14 +1,14 @@
 """Trial service — self-service 3-month Pro trial (start + expiry).
 
-Bir tenant ücretsiz Pro denemesini bir kez başlatabilir: tier `pro` olur ve
-`trial_ends_at` TRIAL_PERIOD_MONTHS ay sonrasına ayarlanır. Süre dolduğunda
-tenant `free` seviyesine geri döner — bu hem worker'daki günlük süpürme
-(`expire_due_trials`) hem de her dashboard okumasındaki tembel kontrol
-(`apply_trial_expiry`) ile garanti edilir; worker çalışmasa bile deneme
-kendiliğinden uzamaz.
+A tenant can start a free Pro trial exactly once: the tier becomes `pro` and
+`trial_ends_at` is set to TRIAL_PERIOD_MONTHS months out. Once it expires,
+the tenant reverts to the `free` tier — this is guaranteed both by the daily
+worker sweep (`expire_due_trials`) and by the lazy check on every dashboard
+read (`apply_trial_expiry`), so a trial can never be extended even if the
+worker isn't running.
 
-Stripe ile ücretli aboneliğe geçen tenant'lar `trial_status='converted'`
-olarak işaretlenir ve süpürme onlara dokunmaz.
+Tenants who convert to a paid Stripe subscription are marked
+`trial_status='converted'` and the sweep leaves them untouched.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ TRIAL_TIER = "pro"
 
 
 class TrialError(Exception):
-    """Deneme başlatılamadı — `code` API hata zarfına taşınır."""
+    """Trial could not be started — `code` is carried into the API error envelope."""
 
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -38,7 +38,7 @@ class TrialError(Exception):
 
 
 def add_months(start: datetime, months: int) -> datetime:
-    """Takvim ayı ekle (31 Ocak + 1 ay → 28/29 Şubat)."""
+    """Add calendar months (Jan 31 + 1 month → Feb 28/29)."""
     month_index = start.month - 1 + months
     year = start.year + month_index // 12
     month = month_index % 12 + 1
@@ -47,7 +47,7 @@ def add_months(start: datetime, months: int) -> datetime:
 
 
 def trial_info(tenant: Tenant) -> dict:
-    """Dashboard/response payload'ına gömülen deneme özeti."""
+    """Trial summary embedded into dashboard/response payloads."""
     return {
         "trial_status": tenant.trial_status or "none",
         "trial_started_at": tenant.trial_started_at.isoformat() if tenant.trial_started_at else None,
@@ -65,7 +65,7 @@ def days_left(tenant: Tenant) -> int | None:
 
 
 async def start_trial(db: AsyncSession, tenant: Tenant) -> Tenant:
-    """3 aylık Pro denemesini başlat. Tenant başına yalnızca bir kez."""
+    """Start the 3-month Pro trial. Only once per tenant."""
     status = tenant.trial_status or "none"
     if status != "none":
         raise TrialError(
@@ -113,7 +113,7 @@ def _downgrade(tenant: Tenant, now: datetime) -> None:
 
 
 async def apply_trial_expiry(db: AsyncSession, tenant: Tenant) -> bool:
-    """Süresi dolmuş denemeyi okuma anında düşür. True → düşürüldü."""
+    """Downgrade an expired trial at read time. True → downgraded."""
     now = datetime.now(timezone.utc)
     if not _is_due(tenant, now):
         return False
@@ -126,7 +126,7 @@ async def apply_trial_expiry(db: AsyncSession, tenant: Tenant) -> bool:
 
 
 async def expire_due_trials(db: AsyncSession) -> int:
-    """Süresi dolan tüm denemeleri düşür (worker süpürmesi, admin session)."""
+    """Downgrade all expired trials (worker sweep, admin session)."""
     now = datetime.now(timezone.utc)
     result = await db.execute(
         select(Tenant).where(
@@ -146,10 +146,10 @@ async def expire_due_trials(db: AsyncSession) -> int:
 
 
 def effective_tier(tier: str, trial_status: str | None, trial_ends_at: datetime | None) -> str:
-    """Süresi dolmuş ama henüz DB'de düşürülmemiş denemeyi `free` say.
+    """Treat a trial as `free` once expired, even if not yet downgraded in the DB.
 
-    Kota kontrolü gibi yazma yapmayan yollarda kullanılır — süpürme gecikse
-    bile deneme fiilen uzamaz.
+    Used on non-write paths like quota checks — so the trial never effectively
+    extends even if the sweep is delayed.
     """
     if trial_status == "active" and trial_ends_at is not None:
         if trial_ends_at <= datetime.now(timezone.utc):

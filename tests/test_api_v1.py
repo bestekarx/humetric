@@ -1,6 +1,6 @@
-"""API V1 endpoint testleri — httpx AsyncClient ile.
+"""API V1 endpoint tests — using httpx AsyncClient.
 
-Gerçek DB yerine mock store kullanir; middleware atlanir.
+Uses a mock store instead of a real DB; middleware is bypassed.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from httpx import ASGITransport, AsyncClient
 
 from humetric.api import app
 
-# NOT: burada bir zamanlar schema'dan toplu bir import vardi. Icindeki adlarin
-# hicbiri kullanilmiyordu ve dordu (EntityMetric, EntityResponse, ApiKeyInfo,
-# ApiKeyList) schema yeniden adlandirildiginda ortadan kalkmisti — bu da tum
-# dosyayi ImportError ile toplanamaz yapip pytest'in butun kosuyu durdurmasina
-# yol aciyordu. Ihtiyac duyan tek test (RankedResult) kendi icinde import ediyor.
+# NOTE: this used to have a bulk import from schema. None of the names in it
+# were actually used, and four of them (EntityMetric, EntityResponse,
+# ApiKeyInfo, ApiKeyList) had disappeared when schema was renamed — which
+# made the whole file uncollectable with an ImportError and stopped pytest's
+# entire run. The one test that needs it (RankedResult) imports it locally.
 
 
 def _now():

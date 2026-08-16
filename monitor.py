@@ -1,9 +1,9 @@
-"""HuMetric Monitoring CLI — Operasyonel izleme dashboard'u.
+"""HuMetric Monitoring CLI — an operational monitoring dashboard.
 
-Kullanim:
-    python monitor.py                    # Anlik durum
-    python monitor.py --watch            # 5 saniyede bir yenile (Ctrl+C cikis)
-    python monitor.py --entities isci    # Belirli entity tipine gore metrik dagilimi
+Usage:
+    python monitor.py                    # current status
+    python monitor.py --watch            # refresh every 5s (Ctrl+C to exit)
+    python monitor.py --entities worker  # metric distribution for a specific entity type
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _rpad(s: str, w: int) -> str:
 
 
 def show_overview():
-    """Genel durum goruntule."""
+    """Display overall status."""
     health = _req("/healthz")
     worker = _req("/healthz/worker") if API_KEY else {}
 
@@ -62,7 +62,7 @@ def show_overview():
 
 
 def show_entities(entity_type: str | None = None):
-    """Entity ve metrik dagilimi."""
+    """Entity and metric distribution."""
     if not API_KEY:
         print("\n  (set HUMETRIC_ADMIN_KEY for entity stats)")
         return
@@ -103,7 +103,7 @@ def show_entities(entity_type: str | None = None):
 
 
 def show_usage():
-    """Kullanim istatistikleri (tenant dashboard)."""
+    """Usage statistics (tenant dashboard)."""
     if not API_KEY:
         return
     dash = _req("/v1/tenant/dashboard")

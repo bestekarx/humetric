@@ -1,9 +1,9 @@
-"""Read-time temporal decay: stored confidence'i metriğin yaşına göre azaltır.
+"""Read-time temporal decay: reduces stored confidence based on the metric's age.
 
-Write-time'da çarpan uygulamak kavramsal olarak yanlış — decay
-metriğin *yaşının* fonksiyonu olmalı, tek seferlik çarpan değil.
-Bu modül read-time'da effective_confidence hesaplar, ham confidence
-denetlenebilir kalır.
+Applying a multiplier at write time is conceptually wrong — decay should be
+a function of the metric's *age*, not a one-time multiplier. This module
+computes effective_confidence at read time, so the raw confidence stays
+auditable.
 """
 
 from __future__ import annotations
@@ -19,15 +19,15 @@ def decayed_confidence(
     last_updated: datetime | None,
     now: datetime | None = None,
 ) -> float:
-    """Stored confidence'a yaş bazlı exponential decay uygula.
+    """Apply age-based exponential decay to a stored confidence.
 
     Args:
-        stored_confidence: DB'deki ham confidence (0-1).
-        last_updated: Metriğin son güncellenme zamanı. None ise decay uygulanmaz.
-        now: Karşılaştırma anı. None ise UTC now.
+        stored_confidence: Raw confidence from the DB (0-1).
+        last_updated: When the metric was last updated. If None, no decay is applied.
+        now: The comparison instant. If None, uses UTC now.
 
     Returns:
-        Effective confidence (0-1). DECAY_ENABLED kapalıysa ham değeri döndürür.
+        Effective confidence (0-1). Returns the raw value if DECAY_ENABLED is off.
     """
     if not config.DECAY_ENABLED:
         return stored_confidence

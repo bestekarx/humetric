@@ -1,2 +1,2 @@
-"""HuMetric API Test Harness — CLI test aracı."""
+"""HuMetric API Test Harness — CLI test tool."""
 

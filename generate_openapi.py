@@ -1,7 +1,7 @@
-"""HuMetric OpenAPI spec uretici.
+"""HuMetric OpenAPI spec generator.
 
-Calistirma: cd humetric && python generate_openapi.py
-Cikti: humetric/openapi.json (static OpenAPI 3.1)
+Run: cd humetric && python generate_openapi.py
+Output: humetric/openapi.json (static OpenAPI 3.1)
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import json
 import os
 import sys
 
-# HuMetric src dizinini Python path'ine ekle
+# Add the HuMetric src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from humetric.api import app
@@ -17,14 +17,14 @@ from humetric import config as hm_config
 
 
 def main():
-    # Tembel import'lari tetikle
+    # Trigger lazy imports
     spec = app.openapi()
-    
-    # info'yu guclendir
+
+    # Enrich the info block
     spec["info"]["description"] = (
-        "HuMetric — Domain-agnostik, cok-sektorlu metrik motoru.\n\n"
-        "Saha hizmet calisanlari, lastik bayileri, ilac mümessilleri ve daha fazlasi "
-        "icin AI-gudumlu performans metrik cikarimi, kure etme ve hibrit arama.\n\n"
+        "HuMetric — a domain-agnostic, multi-sector metric engine.\n\n"
+        "AI-driven performance metric extraction, scoring, and hybrid search "
+        "for field service workers, hospitality venues, pharma reps, and more.\n\n"
         "## Quickstart\n"
         "1. Register: `POST /v1/register`\n"
         "2. Verify email: `GET /v1/verify-email?token=...`\n"

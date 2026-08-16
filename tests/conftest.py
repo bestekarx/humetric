@@ -64,16 +64,16 @@ async def async_client():
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _clean_database():
-    """Her kosunun basinda test DB'sini bosalt.
+    """Empty the test DB at the start of each run.
 
-    Testler sabit kimlikler kullaniyor (code="test", id="entity-1"), yani
-    onceki kosudan kalan satirlar ikinci kosuyu "duplicate key" ile duşuruyor —
-    daha kotusu, patlayan INSERT session'i abort edip AYNI session'i paylasan
-    sonraki testleri de goturuyordu.
+    Tests use fixed identifiers (code="test", id="entity-1"), so rows left
+    over from a previous run would knock out the second run with a
+    "duplicate key" error — worse, the failing INSERT would abort the
+    session and take down the following tests that share that SAME session.
 
-    Guvenlik: yalnizca adi `_test` ile biten veritabaninda calisir. Yanlislikla
-    gelistirme DB'sine yoneltilirse hicbir sey silmez, testler kirli veriyle
-    patlar — sessizce veri kaybetmekten iyidir.
+    Safety: only runs against a database whose name ends in `_test`. If
+    accidentally pointed at a dev database, it deletes nothing — the tests
+    just fail on dirty data instead, which is better than silently losing data.
     """
     from sqlalchemy import text
 

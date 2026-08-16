@@ -389,11 +389,11 @@ async def _export_scheduler(factory) -> None:
 
 
 async def _trial_expiry_scheduler(factory) -> None:
-    """Süresi dolan Pro denemelerini periyodik olarak `free` seviyesine düşür.
+    """Periodically drop expired Pro trials down to the `free` tier.
 
-    TRIAL_SWEEP_INTERVAL_S'de bir çalışır; admin (RLS-bypass) session ile tüm
-    tenant'ları tarar. Süpürme kaçsa bile dashboard okuması aynı düşürmeyi
-    tembel olarak uygular, yani deneme hiçbir koşulda uzamaz.
+    Runs every TRIAL_SWEEP_INTERVAL_S; scans all tenants using an admin
+    (RLS-bypass) session. Even if a sweep is missed, dashboard reads apply
+    the same demotion lazily, so a trial can never be extended.
     """
     from .services.trial_service import expire_due_trials
 

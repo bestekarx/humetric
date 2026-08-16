@@ -160,7 +160,7 @@ def upgrade() -> None:
     op.create_index("ix_audit_log_action", "audit_log", ["action"])
     op.create_index("ix_audit_log_entity", "audit_log", ["entity_id"])
 
-    # --- ivfflat index (entity embedding) — sonra, embedding sütunu tamsa ---
+    # --- ivfflat index (entity embedding) — later, once the embedding column is populated ---
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_entity_embedding_ivfflat "
         "ON entity USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)"

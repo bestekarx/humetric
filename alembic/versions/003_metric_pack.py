@@ -38,7 +38,7 @@ def upgrade() -> None:
     op.create_index("ix_metric_pack_tenant", "metric_pack", ["tenant_id"])
     op.create_index("ix_metric_pack_active", "metric_pack", ["tenant_id", "is_active"])
 
-    # Partial unique: tenant'da ayni entity_type sadece bir aktif pack'te olabilir
+    # Partial unique: within a tenant, the same entity_type can only be in one active pack
     op.execute(
         "CREATE UNIQUE INDEX uq_metric_pack_entity_type_active "
         "ON metric_pack (tenant_id, (definition->>'entity_type')) "

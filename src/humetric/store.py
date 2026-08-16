@@ -846,9 +846,9 @@ class Store:
         order_clauses = []
 
         if query_embedding is not None:
-            # pgvector tipinin kendi operatorunu kullan: list -> vector
-            # adaptasyonunu dogru yapar (func.cosine_distance ham list'i
-            # asyncpg'ye str bekleyerek gonderir ve patlar).
+            # Use pgvector's own operator: it does the list -> vector
+            # adaptation correctly (func.cosine_distance sends the raw list
+            # to asyncpg expecting a str, and blows up).
             base = base.add_columns(
                 Entity.embedding.cosine_distance(query_embedding).label("_dist")
             )
