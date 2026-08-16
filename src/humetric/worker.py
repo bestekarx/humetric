@@ -24,6 +24,19 @@ _log = logging.getLogger(__name__)
 _running = True
 
 
+def _source_span_verified(source_span: str | None, signal_text: str) -> bool:
+    """Whether the model's cited source_span verbatim-matches the signal text.
+
+    Whitespace is normalised on both sides so line-wrap/formatting variation
+    in the model's quote doesn't produce a false negative. A missing span is
+    treated as verified — there's nothing to check, and pack extraction
+    prompts are free to omit it.
+    """
+    if not source_span:
+        return True
+    return " ".join(source_span.split()) in " ".join(signal_text.split())
+
+
 def _handle_shutdown(signum, frame):
     global _running
     _log.info("Received signal %s, shutting down gracefully...", signum)
@@ -83,6 +96,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
     await _persist_signal_result(
         db, task, entity, extracted, final_metrics,
         extract_meta, curator_meta, existing_metrics, pack_def, input_hash,
+        signal_text=signal_text,
         occurred_at=resolve_occurred_at(task, signal),
     )
 
@@ -115,6 +129,7 @@ async def _persist_signal_result(
     existing_metrics,
     pack_def: dict,
     input_hash: str,
+    signal_text: str = "",
     occurred_at: datetime | None = None,
 ) -> None:
     """Write final metrics (KVKK-gated), re-embed the entity, and mark the
@@ -146,6 +161,17 @@ async def _persist_signal_result(
         extracted_entries = [
             e.model_dump() for e in extracted if e.metric_key == fm.metric_key
         ]
+        # History first: append_metric_history does not commit, so it rides
+        # along in upsert_metric's transaction.
+        first_extracted = extracted_entries[0] if extracted_entries else {}
+        evidence_by_key[fm.metric_key] = first_extracted
+        span_verified = _source_span_verified(first_extracted.get("source_span"), signal_text)
+        if not span_verified:
+            _log.warning(
+                "source_span not found verbatim in signal text, flagging for review: "
+                "entity=%s metric=%s signal=%s",
+                entity_id, fm.metric_key, task.signal_id,
+            )
         trace = {
             "extracted": extracted_entries,
             "extract_prompt_hash": extract_meta.get("prompt_hash"),
@@ -155,11 +181,8 @@ async def _persist_signal_result(
             "curator_schema_hash": curator_meta.get("schema_hash"),
             "curator_model": curator_meta.get("model"),
             "needs_review": fm.needs_review,
+            "source_span_verified": span_verified,
         }
-        # History first: append_metric_history does not commit, so it rides
-        # along in upsert_metric's transaction.
-        first_extracted = extracted_entries[0] if extracted_entries else {}
-        evidence_by_key[fm.metric_key] = first_extracted
         await Store.append_metric_history(db, {
             "tenant_id": task.tenant_id,
             "entity_id": entity_id,
@@ -188,7 +211,7 @@ async def _persist_signal_result(
             "schema_hash": extract_meta.get("schema_hash"),
             "model": extract_meta.get("model"),
             "extraction_raw": {"extracted": extracted_entries},
-            "review_status": "pending_review" if fm.needs_review else None,
+            "review_status": "pending_review" if (fm.needs_review or not span_verified) else None,
         })
         written_source_counts[fm.metric_key] = source_count
 

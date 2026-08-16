@@ -112,6 +112,7 @@ async def _prepare_task(db: AsyncSession, task) -> dict | None:
         "pack_def": pack_def,
         "ctx": ctx,
         "input_hash": input_hash,
+        "signal_text": signal_text,
         "occurred_at": resolve_occurred_at(task, signal),
         "llm_provider": llm_provider,
         "llm_key": llm_key,
@@ -232,6 +233,7 @@ async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> in
                 db, t, c["entity"], c["extracted"], c["final_metrics"],
                 c["extract_meta"], c["curator_meta"], c["existing_metrics"],
                 c["pack_def"], c["input_hash"],
+                signal_text=c["signal_text"],
                 occurred_at=c["occurred_at"],
             )
             await Store.complete_task(db, t.id)
