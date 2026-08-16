@@ -56,3 +56,4 @@ packs/youtube-yorum.yaml
 # local-only Postman payloads with real third-party content (e.g. full video
 # transcripts) — never commit copyrighted source text to this public repo
 postman/*.local.json
+postman/humetric-youtube-*.json
