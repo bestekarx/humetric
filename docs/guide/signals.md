@@ -61,7 +61,7 @@ The signal is accepted immediately and processed asynchronously. Use the `signal
 Use the `Idempotency-Key` header to safely retry submissions without creating duplicate signals:
 
 ```bash
-curl -X POST https://api.humetric.io/v1/signals \
+curl -X POST https://api.gethumetric.com/v1/signals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: sig-001" \

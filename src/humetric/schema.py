@@ -604,7 +604,7 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
-_ERROR_DOC_BASE = "https://docs.humetric.dev/errors"
+_ERROR_DOC_BASE = "https://gethumetric.com/docs/errors"
 
 
 def error_envelope(code: str, message: str) -> ErrorResponse:

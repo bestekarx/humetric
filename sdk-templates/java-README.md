@@ -38,4 +38,4 @@ System.out.println(result);
 
 ## Documentation
 
-Full API reference and guides: [docs.humetric.io](https://docs.humetric.io)
+Full API reference and guides: [gethumetric.com/docs](https://gethumetric.com/docs)

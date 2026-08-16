@@ -4,11 +4,11 @@ The complete API reference is available as an OpenAPI 3.1 specification.
 
 ## Interactive Docs
 
-Explore the API interactively at [api.humetric.io/docs](https://api.humetric.io/docs).
+Explore the API interactively at [api.gethumetric.com/docs](https://api.gethumetric.com/docs).
 
 ## OpenAPI Spec
 
-Raw OpenAPI JSON: [api.humetric.io/openapi.json](https://api.humetric.io/openapi.json)
+Raw OpenAPI JSON: [api.gethumetric.com/openapi.json](https://api.gethumetric.com/openapi.json)
 
 ## Authentication
 
@@ -56,7 +56,7 @@ All errors follow this format:
   "error": {
     "code": "entity_not_found",
     "message": "Entity with ID 'xyz' not found",
-    "doc_url": "https://docs.humetric.dev/errors/entity_not_found"
+    "doc_url": "https://gethumetric.com/docs/errors/entity_not_found"
   }
 }
 ```

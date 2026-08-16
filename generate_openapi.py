@@ -49,7 +49,7 @@ def main():
     
     spec["externalDocs"] = {
         "description": "Full Documentation",
-        "url": "https://docs.humetric.dev",
+        "url": "https://gethumetric.com/docs",
     }
     
     out_path = os.path.join(os.path.dirname(__file__), "openapi.json")

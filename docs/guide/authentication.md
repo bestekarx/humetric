@@ -26,7 +26,7 @@ API keys are scoped tokens that grant access to specific operations. Each tenant
 ### Creating an API Key
 
 ```bash
-curl -X POST https://api.humetric.io/v1/api-keys \
+curl -X POST https://api.gethumetric.com/v1/api-keys \
   -H "Authorization: Bearer YOUR_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{"prefix": "myapp", "scopes": ["signals:write", "entities:read", "query"]}'
@@ -47,14 +47,14 @@ The response includes the `full_key` — save it immediately. Only the key prefi
 ### Listing Keys
 
 ```bash
-curl https://api.humetric.io/v1/api-keys \
+curl https://api.gethumetric.com/v1/api-keys \
   -H "Authorization: Bearer YOUR_ADMIN_KEY"
 ```
 
 ### Revoking a Key
 
 ```bash
-curl -X DELETE https://api.humetric.io/v1/api-keys/key_abc123 \
+curl -X DELETE https://api.gethumetric.com/v1/api-keys/key_abc123 \
   -H "Authorization: Bearer YOUR_ADMIN_KEY"
 ```
 

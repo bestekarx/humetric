@@ -9,7 +9,7 @@ Create an API key via the API or dashboard:
 ::: code-group
 
 ```bash [cURL]
-curl -X POST https://api.humetric.io/v1/api-keys \
+curl -X POST https://api.gethumetric.com/v1/api-keys \
   -H "Authorization: Bearer YOUR_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{"prefix": "myapp", "scopes": ["signals:write", "entities:read", "query"]}'
@@ -116,7 +116,7 @@ System.out.println("Signal submitted: " + result.getSignalId());
 ```
 
 ```bash [cURL]
-curl -X POST https://api.humetric.io/v1/signals \
+curl -X POST https://api.gethumetric.com/v1/signals \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -H "Idempotency-Key: sig-001" \
