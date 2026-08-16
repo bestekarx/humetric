@@ -2,6 +2,8 @@
   "name": "humetric-docs",
   "version": "0.1.0",
   "private": true,
+  "//": "vitepress ESM-only; bu alan olmadan .vitepress/config.ts CJS olarak yuklenmeye calisiliyor ve build 'ESM file cannot be loaded by require' ile duşuyor",
+  "type": "module",
   "scripts": {
     "docs:dev": "vitepress dev",
     "docs:build": "vitepress build",

@@ -1,10 +1,14 @@
 {
   "mcpServers": {
     "humetric": {
-      "command": "/absolute/path/to/humetric/.venv/bin/humetric-mcp",
-      "args": ["--transport", "stdio"],
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/bestekarx/humetric.git",
+        "humetric-mcp"
+      ],
       "env": {
-        "HUMETRIC_MCP_API_KEY": "hu_live_your_api_key_here",
+        "HUMETRIC_MCP_API_KEY": "hm_live_your_api_key_here",
         "HUMETRIC_BASE_URL": "http://localhost:8002"
       }
     }

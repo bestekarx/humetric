@@ -221,30 +221,33 @@ curl -X POST "$BASE/query" \
 
 ## MCP Server
 
-Integrate HuMetric directly into Claude Desktop, Claude Code, or any MCP-compatible client. The
-server exposes 24 typed tools covering signals, entities/metrics, query, metric packs, human
-review, KVKK consent, and account/audit endpoints — see [`docs/mcp.md`](docs/mcp.md) for the full
-tool list and design notes.
+Integrate HuMetric directly into Claude Desktop, Claude Code, Cursor, or any MCP-compatible
+client. The server exposes 24 typed tools covering signals, entities/metrics, query, metric
+packs, human review, KVKK consent, and account/audit endpoints.
+
+📖 **Step-by-step setup:** [`docs/mcp-setup.md`](docs/mcp-setup.md) (English) ·
+[`docs/mcp-kurulum.md`](docs/mcp-kurulum.md) (Türkçe) ·
+[`docs/mcp.md`](docs/mcp.md) (tool list and design notes)
+
+No clone required — Claude Code, one command:
 
 ```bash
-# after `pip install -e .`, the humetric-mcp console script is on PATH
-
-# stdio mode (Claude Desktop)
-humetric-mcp --transport stdio
-
-# SSE / streamable-http mode (remote, multi-client)
-humetric-mcp --transport sse --port 8765
-humetric-mcp --transport streamable-http --port 8765
+claude mcp add humetric --scope user \
+  --env HUMETRIC_MCP_API_KEY=hm_live_... \
+  --env HUMETRIC_BASE_URL=https://api.gethumetric.com \
+  -- uvx --from git+https://github.com/bestekarx/humetric.git humetric-mcp
 ```
-
-Environment: set `HUMETRIC_MCP_API_KEY` and `HUMETRIC_BASE_URL` in `.env`.
 
 For Claude Desktop, add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "humetric": {
-      "command": "/absolute/path/to/humetric/.venv/bin/humetric-mcp",
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/bestekarx/humetric.git",
+        "humetric-mcp"
+      ],
       "env": {
         "HUMETRIC_MCP_API_KEY": "hm_live_...",
         "HUMETRIC_BASE_URL": "http://localhost:8002"
@@ -254,8 +257,19 @@ For Claude Desktop, add to `claude_desktop_config.json`:
 }
 ```
 
-**Use absolute paths.** Claude Desktop launches the command from its own working directory; a
-relative path silently fails with "server failed to start".
+**Use absolute paths.** Claude Desktop launches the command from its own working directory and
+without your shell's `PATH`; if bare `uvx` does not resolve it silently fails with "server failed
+to start". Put the output of `which uvx` in `"command"`.
+
+Working from a clone instead? `pip install -e .` installs only the MCP server (~30 packages, no
+database drivers); `pip install -e ".[server]"` adds the API and worker stack. Either way the
+`humetric-mcp` console script lands on PATH:
+
+```bash
+humetric-mcp --transport stdio                      # Claude Desktop
+humetric-mcp --transport sse --port 8765            # remote, multi-client
+humetric-mcp --transport streamable-http --port 8765
+```
 
 ## Batch Backfill Worker
 

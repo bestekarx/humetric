@@ -9,6 +9,7 @@ export default defineConfig({
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Quickstart', link: '/quickstart' },
+      { text: 'MCP', link: '/mcp-setup' },
       { text: 'API Reference', link: '/api-reference' },
       { text: 'Architecture', link: '/console-metric-history' },
     ],
@@ -21,6 +22,18 @@ export default defineConfig({
             { text: 'Signals', link: '/guide/signals' },
             { text: 'Entities', link: '/guide/entities' },
             { text: 'BYO-Key', link: '/guide/byo-key' },
+          ]
+        }
+      ],
+      // Uc MCP sayfasi da ayni kenar cubugunu paylasir: kullanici hangisine
+      // girerse girsin digerine (ve dil karsiligina) tek tikla gecebilsin.
+      '/mcp': [
+        {
+          text: 'MCP',
+          items: [
+            { text: 'Setup', link: '/mcp-setup' },
+            { text: 'Kurulum (TR)', link: '/mcp-kurulum' },
+            { text: 'Reference', link: '/mcp' },
           ]
         }
       ],

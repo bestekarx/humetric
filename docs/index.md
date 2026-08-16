@@ -24,4 +24,8 @@ features:
     details: Define custom metric schemas with YAML-based packs. AI wizard generates packs from natural language descriptions.
   - title: SDK Support
     details: Auto-generated SDKs for Python, TypeScript, .NET, PHP, and Java. Get started in under 5 minutes.
+  - title: MCP Server
+    details: Connect Claude, Cursor, or any MCP client to your data with one command. 24 typed tools for signals, metrics, packs, and review.
+    link: /mcp-setup
+    linkText: Set up MCP
 ---
