@@ -39,12 +39,14 @@ docs/assets/walkthrough.raw.*
 docs/assets/video/
 docs/assets/demo.gif
 docs/assets/walkthrough.mp4
+docs/assets/youtube-demo-logs/
 *.storage.json
 
 # scratch plan docs / sample packs — not part of the metric pipeline
 docs/plans/tanitim-ve-sosyal-medya.md
 docs/plans/video-sistemi-envanter-ve-senaryolar.md
 docs/plans/yildiz-open-innovation-basvuru.md
+docs/plans/yildiz-basvuru-form-cevaplari.md
 docs/plans/youtube-yorum-segmentler/
 docs/plans/youtube-yorum-video-uyum-senaryo.md
 packs/demo-worker-full.yaml
