@@ -10,7 +10,7 @@ COPY pyproject.toml .
 COPY src/ src/
 COPY packs/ packs/
 COPY prompts/ prompts/
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e ".[server]"
 
 EXPOSE 8002
 
