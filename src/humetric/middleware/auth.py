@@ -21,6 +21,7 @@ _serializer = URLSafeTimedSerializer(AUTH_SECRET)
 _DASHBOARD_SESSION_SCOPES = [
     "signals:write", "entities:read", "entities:write",
     "signals:read", "query", "packs:read", "packs:admin",
+    "tenant:admin",
 ]
 
 PUBLIC_PATHS = {

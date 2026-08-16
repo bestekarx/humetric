@@ -41,6 +41,7 @@ async def _seed(code: str, name: str, api_key_label: str | None = None) -> None:
                     "signals:write", "signals:read",
                     "query",
                     "packs:read", "packs:admin",
+                    "tenant:admin",
                 ],
             )
             print(f"API key created (prefix={api_key.prefix}, id={api_key.id})")

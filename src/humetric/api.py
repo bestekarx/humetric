@@ -1579,6 +1579,7 @@ async def get_tenant_keys(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    _require_scope(request, "tenant:admin")
     tenant_id = request.state.tenant_id
     try:
         keys = await Store.get_tenant_keys(db, tenant_id)
@@ -1596,6 +1597,7 @@ async def upsert_tenant_keys(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    _require_scope(request, "tenant:admin")
     tenant_id = request.state.tenant_id
     try:
         keys = await Store.upsert_tenant_keys(db, tenant_id, {
@@ -1619,6 +1621,7 @@ async def delete_tenant_keys(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    _require_scope(request, "tenant:admin")
     tenant_id = request.state.tenant_id
     try:
         keys = await Store.delete_tenant_keys(db, tenant_id)
@@ -1758,6 +1761,7 @@ async def tenant_dashboard(
 ):
     from .services.trial_service import apply_trial_expiry, trial_info
 
+    _require_scope(request, "tenant:admin")
     tenant_id = request.state.tenant_id
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
@@ -1812,6 +1816,7 @@ async def start_pro_trial(
     """3 aylık ücretsiz Pro denemesini başlat (tenant başına bir kez)."""
     from .services.trial_service import TrialError, apply_trial_expiry, days_left, start_trial
 
+    _require_scope(request, "tenant:admin")
     tenant_id = request.state.tenant_id
     tenant = await db.get(Tenant, tenant_id)
     if not tenant:
@@ -1842,6 +1847,7 @@ async def rotate_api_key(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    _require_scope(request, "tenant:admin")
     tenant_id = request.state.tenant_id
     raw_key = f"hm_live_{secrets.token_urlsafe(32)}"
     api_key_hash = hash_key(raw_key)
@@ -1854,7 +1860,7 @@ async def rotate_api_key(
         tenant_id=tenant_id,
         prefix="hm_live",
         key_hash=api_key_hash,
-        scopes=["signals:write", "entities:read", "entities:write", "signals:read", "query", "packs:read", "packs:admin"],
+        scopes=["signals:write", "entities:read", "entities:write", "signals:read", "query", "packs:read", "packs:admin", "tenant:admin"],
         label="Default API Key",
         expires_at=datetime.now(timezone.utc) + timedelta(days=730),
     )
@@ -1874,6 +1880,7 @@ async def billing_checkout(
 ):
     from .services.stripe_service import create_checkout_session, create_customer
 
+    _require_scope(request, "tenant:admin")
     if tier not in ("pro", "enterprise"):
         raise HTTPException(status_code=400, detail=error_envelope("validation_error", "Tier must be 'pro' or 'enterprise'").model_dump())
 
@@ -1919,6 +1926,7 @@ async def tenant_usage(
     request: Request,
     db: AsyncSession = Depends(_get_tenant_session),
 ):
+    _require_scope(request, "tenant:admin")
     tenant_id = request.state.tenant_id
     return await _build_usage_report(db, tenant_id, start_date, end_date)
 

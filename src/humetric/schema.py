@@ -35,6 +35,7 @@ class ApiKeyScopes(str, Enum):
     query = "query"
     packs_admin = "packs:admin"
     packs_read = "packs:read"
+    tenant_admin = "tenant:admin"
 
 
 class ConsentStatus(str, Enum):
