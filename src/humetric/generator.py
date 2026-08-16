@@ -2,10 +2,10 @@
 
 Generates entities and free-text signals (in Turkish) for all four production
 metric packs:
-  - bayi (tire dealer)
+  - tesis (hotel property)
   - isci (field service worker)
   - cari (customer / account)
-  - bolge_sorumlusu (regional manager)
+  - bolge_muduru (regional manager)
 
 Diversity per entity type:
   - Pool of ~100 realistic entity profiles (names, cities, companies).
@@ -18,8 +18,8 @@ Usage (as module):
 
     gen = Generator(seed=42)
     entities, signals = gen.generate(
-        entity_counts={"isci": 20, "bayi": 20, "cari": 15, "bolge_sorumlusu": 10},
-        signals_per_entity={"isci": 25, "bayi": 20, "cari": 20, "bolge_sorumlusu": 20},
+        entity_counts={"isci": 20, "tesis": 20, "cari": 15, "bolge_muduru": 10},
+        signals_per_entity={"isci": 25, "tesis": 20, "cari": 20, "bolge_muduru": 20},
     )
     # entities: list[dict] with id, entity_type, fields, free_text
     # signals:  list[dict] with entity_id, entity_type, text
@@ -71,14 +71,30 @@ _DISTRICTS = [
 ]
 
 _COMPANY_NAMES = [
-    "Anadolu Lastik", "Bosphorus Otomotiv", "Çelik Oto Lastik", "Denizli Lastikçi",
-    "Ege Oto", "Fırat Ticaret", "Güney Lastikçilik", "İkizler Oto",
-    "Karadeniz Otomotiv", "Marmara Araç", "Özkan Ticaret", "Pamukkale Lastik",
-    "Sakarya Servis", "Trakya Oto", "Uludağ Lastik", "Vadi Ticaret",
-    "Doğuş Otomotiv", "Batı Servis", "Kuzey Oto Lastik", "Güven Ticaret",
-    "Akdeniz Oto", "İçel Lastikçilik", "Konya Oto Servis", "Bursa Lastik Market",
-    "Sancak Ticaret", "Ata Oto Lastik", "Önder Lastik", "Mega Oto",
-    "Şimşek Ticaret", "Kırıkkale Servis", "Avcılar Oto", "Pendik Lastik",
+    "Anadolu Ticaret", "Bosphorus Yapı", "Çelik Endüstri", "Denizli Tekstil",
+    "Ege Gıda", "Fırat Ticaret", "Güney Lojistik", "İkizler Makine",
+    "Karadeniz Sanayi", "Marmara Depo", "Özkan Ticaret", "Pamukkale Tekstil",
+    "Sakarya Servis", "Trakya Gıda", "Uludağ Metal", "Vadi Ticaret",
+    "Doğuş Yapı", "Batı Servis", "Kuzey Lojistik", "Güven Ticaret",
+    "Akdeniz Gıda", "İçel Tarım", "Konya Un", "Bursa Makine",
+    "Sancak Ticaret", "Ata Enerji", "Önder Ambalaj", "Mega Yapı",
+    "Şimşek Ticaret", "Kırıkkale Servis", "Avcılar Kimya", "Pendik Metal",
+]
+
+_TESIS_NAMES = [
+    "Marina Bay Otel", "Zeytin Konak", "Panorama Resort", "Liman Otel",
+    "Asma Yaprak Butik", "Deniz Feneri Otel", "Çınaraltı Konak", "Sahil Palas",
+    "Gökçe Resort", "Taşhan Butik Otel", "Mavi Koy Otel", "Bahçeli Konak",
+    "Yalı Suites", "Kayalık Resort", "Zümrüt Otel", "Rüzgargülü Otel",
+    "Beyaz Ev Butik", "Antik Kapı Konak", "Palmiye Resort", "Sedir Otel",
+    "Kumsal Suites", "Değirmen Konak", "Bulut Tepe Otel", "Narin Butik",
+    "Yıldız Bahçe Otel", "Köprübaşı Konak", "Turkuaz Bay Resort", "Ada Otel",
+    "Meltem Suites", "Fener Konak", "Papatya Otel", "Selvi Resort",
+]
+
+_TESIS_TIPLERI = [
+    "şehir oteli", "resort", "butik otel", "termal otel",
+    "apart otel", "konak", "dağ oteli", "havalimanı oteli",
 ]
 
 _SERVICE_AREAS = [
@@ -107,20 +123,19 @@ _WORK_AREAS = [
     "Kurulum Projeleri", "Teknik Destek",
 ]
 
-_TIRE_BRANDS = [
-    "Michelin", "Bridgestone", "Goodyear", "Pirelli", "Continental",
-    "Lassa", "Petlas", "Falken", "Hankook", "Dunlop",
-    "Yokohama", "Kumho", "Nokian", "Cooper", "Toyo",
+_KANALLAR = [
+    "online rezervasyon platformu", "tur operatörü", "kurumsal anlaşma",
+    "acente", "doğrudan rezervasyon", "sadakat programı",
 ]
 
-_TIRE_TYPES = [
-    "yaz lastiği", "kış lastiği", "dört mevsim lastik", "performans lastiği",
-    "SUV lastiği", "hafif ticari lastik", "ağır vasıta lastiği", "runflat lastik",
+_ODA_TIPLERI = [
+    "standart oda", "deniz manzaralı oda", "aile odası", "suit",
+    "engelli dostu oda", "bahçe katı oda", "çatı katı suit", "tek kişilik oda",
 ]
 
-_PRODUCTS = [
-    "rot balans", "lastik değişim", "jant düzeltme", "akü",
-    "motor yağı", "fren balatası", "amortisör", "egzoz",
+_HIZMETLER = [
+    "kahvaltı", "oda servisi", "havuz", "spa",
+    "otopark", "havalimanı transferi", "çamaşırhane", "toplantı salonu",
 ]
 
 
@@ -230,7 +245,7 @@ _ISCI_POSITIVE_TEMPLATES = [
         "teknik_beceri",
     ),
 
-    # İletişim
+    # Communication
     (
         "{ad} {soyad} müşteriye {beceri} yapılacak işleri baştan "
         "sona net bir dille anlattı. Müşteri: 'Her aşamayı anladım, "
@@ -318,7 +333,7 @@ _ISCI_NEGATIVE_TEMPLATES = [
         "teknik_beceri",
     ),
 
-    # İletişim
+    # Communication
     (
         "{ad} {soyad} müşteriye yapılan {beceri} işlemini hiç "
         "açıklamadan faturayı bırakıp gitti. Müşteri faturayı "
@@ -366,146 +381,149 @@ _ISCI_MIXED_NEUTRAL_TEMPLATES = [
     ),
 ]
 
-# ============================================================ BAYI ============================================================
+# ============================================================ TESIS ============================================================
 
-_BAYI_POSITIVE_TEMPLATES = [
-    # Satış performansı
+_TESIS_POSITIVE_TEMPLATES = [
+    # Temizlik ve bakim
     (
-        "{firma} bayiimiz bu ay 320 adet lastik satarak hedefin "
-        "üstüne çıktı. Özellikle {marka} kış lastiğinde pazar "
-        "payı arttı. Bölge satış müdürü: 'Gayet başarılı.'",
-        "satis_performansi",
+        "{tesis} denetim raporu: Oda temizlik skoru 96/100, ortak alanlarda "
+        "uygunsuzluk yok. Açık arıza kaydı sıfır. Denetçi notu: "
+        "'Bakım ekibi eksikleri gün içinde kapatıyor.'",
+        "temizlik_ve_bakim",
     ),
     (
-        "{firma} bayi aylık rapor: Hedef 250, gerçekleşen 298. "
-        "Büyüme oranı geçen yıla göre %18. {bolge} bölgesinde "
-        "en yüksek ciro yapan 3. bayi.",
-        "satis_performansi",
+        "{tesis} misafir yorumu: 'Odaya girdiğimizde her yer pırıl pırıldı, "
+        "banyoda tek bir leke yoktu. {oda_tipi} tercih ettik, beklentimizin "
+        "üstündeydi.' Temizlik puanı 9.4/10.",
+        "temizlik_ve_bakim",
     ),
     (
-        "{firma} bu çeyrekte {marka} yaz lastiği kampanyasında "
-        "olağanüstü performans gösterdi. 450 set lastik satışı "
-        "ile rekor kırdı. Kampanya dönüşüm oranı %65.",
-        "satis_performansi",
-    ),
-    (
-        "{firma} bayi 3 aylık büyüme trendi: +%12, +%16, +%22. "
-        "Müşteri portföyü genişliyor, filo anlaşmaları arttı. "
-        "{bolge} satış ekibi tarafından takdir belgesi verildi.",
-        "satis_performansi",
+        "{tesis} yenileme sonrası ilk ay: {sayi} odada mobilya ve klima "
+        "değişimi tamamlandı. Bakım kaynaklı şikayet oranı %70 düştü.",
+        "temizlik_ve_bakim",
     ),
 
-    # Tahsilat disiplini
+    # Personel ilgisi
     (
-        "{firma} bayii tüm cari hesaplarını vadesinde kapattı. "
-        "Geçen ay sıfır gecikmeli tahsilat. Muhasebe: 'En disiplinli "
-        "bayilerimizden, çek/senet sorunu hiç yaşamadık.'",
-        "tahsilat_disiplini",
+        "{tesis} misafir anketi: Personel ilgisi 5 üzerinden 4.8. "
+        "Özellikle resepsiyonun karşılama hızı ve sorun çözme tutumu övülmüş. "
+        "'Gece yarısı aradık, 10 dakikada çözdüler.'",
+        "personel_ilgisi",
     ),
     (
-        "{firma} bayi cari hesap özeti: Açık hesap yok, tüm "
-        "ödemeler vade tarihinde yapılmış. Son 6 aydır devam eden "
-        "istikrar. Kredi limiti artırımı onaylandı.",
-        "tahsilat_disiplini",
+        "{tesis} misafir yorumu: 'Kahvaltıda çocuğumuz için ayrı menü "
+        "hazırladılar, kimse istemeden düşünmüşler. Böyle bir ilgiyi "
+        "beklemiyorduk.' Tavsiye skoru %94.",
+        "personel_ilgisi",
     ),
     (
-        "{firma} bayii mal alımında peşin ödeme yaparak %3 iskonto "
-        "hakkı kazandı. Finans departmanı: 'Bu bayiyle çalışmak "
-        "risk yönetimi açısından konforlu.'",
-        "tahsilat_disiplini",
+        "{tesis} gizli müşteri ziyareti: Check-in 3 dakikada tamamlandı, "
+        "{hizmet} talebi anında karşılandı. Rapor: 'Ekip eğitimli ve istekli.'",
+        "personel_ilgisi",
     ),
 
-    # Müşteri memnuniyeti
+    # Konfor ve sessizlik
     (
-        "{firma} bayi müşteri anketi sonucu: 5 üzerinden 4.7. "
-        "Özellikle servis hızı ve fiyat şeffaflığı övülmüş. "
-        "Google yorumları: 68 yorum, 4.5 yıldız.",
-        "musteri_memnuniyeti",
+        "{tesis} {oda_tipi} geri bildirimi: 'Yatak çok rahattı, dışarıdan "
+        "hiç ses gelmedi, klima sessiz çalışıyordu.' Konfor puanı 9.1/10.",
+        "konfor_ve_sessizlik",
     ),
     (
-        "{firma} bayiye gelen müşteri yorumu: '10 yıldır buradan "
-        "alıyorum, hiç pişman olmadım. Çalışanlar güler yüzlü, "
-        "işçilik temiz.' Tavsiye skoru: %92.",
-        "musteri_memnuniyeti",
+        "{tesis} ses yalıtımı yatırımı sonrası gürültü şikayeti son çeyrekte "
+        "12'den 2'ye düştü. {hizmet} alanı ile oda katları arasındaki geçiş "
+        "yeniden düzenlendi.",
+        "konfor_ve_sessizlik",
+    ),
+
+    # Tekrar gelme egilimi
+    (
+        "{tesis} misafir yorumu: '{sehir} her gelişimizde burada kalıyoruz, "
+        "bu 4. konaklamamız. Arkadaşlarımıza da tavsiye ettik.' "
+        "Sadakat programı üzerinden tekrar rezervasyon oranı %38.",
+        "tekrar_gelme_egilimi",
     ),
     (
-        "{firma} bayi müşteri sadakat programında {bolge} birincisi "
-        "seçildi. Geri dönüş oranı %78, şikayet oranı %2.",
-        "musteri_memnuniyeti",
-    ),
-    (
-        "{firma} bayide bugün müşteri şikayeti anında çözüldü: "
-        "Hatalı takılan lastik 15 dakikada değiştirildi, müşteriye "
-        "kahve ikram edildi. Şikayet memnuniyete dönüştü.",
-        "musteri_memnuniyeti",
+        "{tesis} {kanal} üzerinden gelen misafirlerin %41'i ikinci kez "
+        "konakladı. İptal oranı %3 ile bölge ortalamasının altında.",
+        "tekrar_gelme_egilimi",
     ),
 ]
 
-_BAYI_NEGATIVE_TEMPLATES = [
-    # Satış performansı
+_TESIS_NEGATIVE_TEMPLATES = [
+    # Temizlik ve bakim
     (
-        "{firma} bayi bu ay hedefin %40 altında kaldı. 250 hedefe "
-        "karşılık 152 satış. {bolge} bölge müdürü: 'Sebep araştırılıyor, "
-        "stok yönetiminde sıkıntı olabilir.'",
-        "satis_performansi",
+        "{tesis} denetim raporu: {sayi} odada açık arıza kaydı var, "
+        "bazıları 3 haftadır kapatılmamış. Temizlik skoru 61/100. "
+        "Ortak tuvaletlerde uygunsuzluk tespit edildi.",
+        "temizlik_ve_bakim",
     ),
     (
-        "{firma} bayi son 3 aydır düşüş trendinde. Ocak 210, Şubat 180, "
-        "Mart 145 adet satış. {marka} kampanya döneminde bile artış "
-        "göstermedi.",
-        "satis_performansi",
+        "{tesis} misafir yorumu: 'Odaya girdiğimizde çarşaflar değişmemişti, "
+        "banyoda küf kokusu vardı. Oda değiştirmek zorunda kaldık.' "
+        "Temizlik puanı 4.2/10.",
+        "temizlik_ve_bakim",
     ),
     (
-        "{firma} bayide ciddi stok sorunu var. Raf düzeni karışık, "
-        "{lastik_tipi} stokta yok, müşteri bekletiliyor. Gizli müşteri "
-        "ziyareti skoru düşük.",
-        "satis_performansi",
-    ),
-
-    # Tahsilat disiplini
-    (
-        "{firma} bayi cari hesabında 45 günlük gecikme var. Toplam "
-        "borç 87.500 TL, ödeme planına uymadı. 2 kez ihtarname "
-        "gönderildi.",
-        "tahsilat_disiplini",
-    ),
-    (
-        "{firma} bayiden tahsilat yapılamıyor. Verdiği çek karşılıksız "
-        "çıktı. Muhasebe: 'Bu ay 3. kez aynı sorunu yaşıyoruz, teminat "
-        "mektubu talep edilmeli.'",
-        "tahsilat_disiplini",
+        "{tesis} bakım kaynaklı şikayetler üst üste 3 aydır artıyor: "
+        "sıcak su kesintisi, asansör arızası, {oda_tipi} klimalarında sorun. "
+        "Teknik ekip yetersiz kalıyor.",
+        "temizlik_ve_bakim",
     ),
 
-    # Müşteri memnuniyeti
+    # Personel ilgisi
     (
-        "{firma} bayi hakkında müşteri şikayeti: 'Lastik balans "
-        "hatalı yapılmış, direksiyon titriyor. 3 kez gittim düzelmedi.' "
-        "Google yorumları: 1 yıldız, 'Uzak durun' yorumları arttı.",
-        "musteri_memnuniyeti",
+        "{tesis} misafir şikayeti: 'Resepsiyonda 25 dakika bekledik, "
+        "kimse ilgilenmedi. Sorduğumuz soruya yanıt bile alamadık.' "
+        "Personel puanı 3.1/10.",
+        "personel_ilgisi",
     ),
     (
-        "{firma} bayide gizli müşteri ziyareti: Personel ilgisiz, "
-        "bekleme süresi 25 dakika, fiyat bilgisi verilmedi. Ziyaret "
-        "raporu: 'Tavsiye edilmez.'",
-        "musteri_memnuniyeti",
+        "{tesis} gizli müşteri ziyareti: {hizmet} talebi iki kez unutuldu, "
+        "şikayet iletildiğinde özür dilenmedi. Rapor: 'Tavsiye edilmez.'",
+        "personel_ilgisi",
+    ),
+
+    # Konfor ve sessizlik
+    (
+        "{tesis} yorumlarında tekrar eden gürültü şikayeti: "
+        "'Koridordan gelen sesler yüzünden sabaha kadar uyuyamadık.' "
+        "Son ayda benzer 9 yorum var.",
+        "konfor_ve_sessizlik",
+    ),
+    (
+        "{tesis} {oda_tipi} geri bildirimi: 'Yatak çok sertti, klima "
+        "gürültülüydü, pencere tam kapanmıyordu.' Konfor puanı 4.5/10.",
+        "konfor_ve_sessizlik",
+    ),
+
+    # Tekrar gelme egilimi
+    (
+        "{tesis} misafir yorumu: 'Bir daha gelmeyiz, {sehir} bu fiyata "
+        "çok daha iyi alternatif var.' Erken çıkış talebi kayda geçti.",
+        "tekrar_gelme_egilimi",
+    ),
+    (
+        "{tesis} {kanal} kaynaklı rezervasyonlarda iptal oranı %19'a çıktı. "
+        "Tekrar konaklama oranı bir yılda %31'den %12'ye düştü.",
+        "tekrar_gelme_egilimi",
     ),
 ]
 
-_BAYI_MIXED_NEUTRAL_TEMPLATES = [
+_TESIS_MIXED_NEUTRAL_TEMPLATES = [
     (
-        "{firma} bayi bu ay hedefi tam tutturdu — ne fazla ne eksik. "
-        "250 adet satış. Bölge ortalamasıyla aynı seviyede.",
+        "{tesis} bu ay bölge ortalamasında: doluluk %72, misafir puanı 7.8. "
+        "Ne öne çıkan bir başarı ne de belirgin bir sorun var.",
         "karisik",
     ),
     (
-        "{firma} bayi stok sayımı yapıldı, ciddi bir fark yok. "
-        "Rutin denetim başarılı. {lastik_tipi} stoğunda küçük "
-        "eksiklik var ama tolere edilebilir düzeyde.",
+        "{tesis} misafir yorumu: 'Konum ve temizlik iyiydi ama {hizmet} "
+        "beklediğimiz gibi değildi. Fiyatına göre normal.'",
         "karisik",
     ),
     (
-        "{firma} bayide mevsim geçişi nedeniyle satışlar dalgalı. "
-        "Bir hafta yoğun, bir hafta sakin. Personel sayısı yeterli.",
+        "{tesis} rutin denetimi tamamlandı, kritik bulgu yok. "
+        "{oda_tipi} kategorisinde küçük eksikler raporlandı, "
+        "tolere edilebilir düzeyde.",
         "karisik",
     ),
 ]
@@ -513,7 +531,7 @@ _BAYI_MIXED_NEUTRAL_TEMPLATES = [
 # ============================================================ CARI ============================================================
 
 _CARI_POSITIVE_TEMPLATES = [
-    # Ödeme alışkanlığı
+    # Payment habit
     (
         "{firma} müşterisi son 12 aydır tüm faturalarını vadesinde "
         "veya erken ödedi. Ortalama ödeme süresi 3 gün (vadeden önce). "
@@ -533,7 +551,7 @@ _CARI_POSITIVE_TEMPLATES = [
         "odeme_aliskanligi",
     ),
 
-    # İletişim
+    # Communication
     (
         "{firma} yetkilisi {muhatap} Bey/Hanım ile iletişim çok "
         "hızlı. Gönderilen teklife 1 saat içinde dönüş yapıyor, "
@@ -554,7 +572,7 @@ _CARI_POSITIVE_TEMPLATES = [
         "iletisim",
     ),
 
-    # İş tekrarı
+    # Repeat business
     (
         "{firma} müşterisi son 2 yılda 6 proje tekrarı verdi. "
         "2025'te toplam iş hacmi 350.000 TL. Sadakat seviyesi "
@@ -596,7 +614,7 @@ _CARI_POSITIVE_TEMPLATES = [
 ]
 
 _CARI_NEGATIVE_TEMPLATES = [
-    # Ödeme alışkanlığı
+    # Payment habit
     (
         "{firma} müşterisi faturalarında kronik gecikme var. Son "
         "3 fatura ortalama 42 gün gecikmeli ödendi. Tahsilat ekibi "
@@ -616,7 +634,7 @@ _CARI_NEGATIVE_TEMPLATES = [
         "odeme_aliskanligi",
     ),
 
-    # İletişim
+    # Communication
     (
         "{firma} yetkilisi {muhatap} Bey'e ulaşmak çok zor. 5 kez "
         "aranmasına rağmen dönüş yapmadı. E-postalar cevapsız, "
@@ -636,7 +654,7 @@ _CARI_NEGATIVE_TEMPLATES = [
         "iletisim",
     ),
 
-    # İş tekrarı
+    # Repeat business
     (
         "{firma} müşterisi bu yıl sadece 1 küçük iş verdi. Geçen "
         "yıl 4 proje vardı, %75 düşüş. Muhtemel sebep: rakip "
@@ -686,144 +704,138 @@ _CARI_MIXED_NEUTRAL_TEMPLATES = [
     ),
 ]
 
-# ============================================================ BOLGE_SORUMLUSU ============================================================
+# ============================================================ BOLGE_MUDURU ============================================================
 
-_BS_POSITIVE_TEMPLATES = [
-    # Bayi yönetimi
+_BM_POSITIVE_TEMPLATES = [
+    # Tesis yonetimi
     (
-        "{ad} {soyad} {bolge} bölgesindeki 12 bayiyi düzenli "
-        "ziyaret ediyor. Haftalık ziyaret ortalaması 4, aylık 16. "
-        "Bayi memnuniyet anketi: %91 olumlu. 'Her sorunumuzu dinler, "
-        "çözüm üretir.'",
-        "bayi_yonetimi",
+        "{ad} {soyad} {bolge} bölgesindeki 12 tesisi düzenli ziyaret ediyor. "
+        "Haftalık ziyaret ortalaması 4, aylık 16. Tesis müdürü memnuniyet "
+        "anketi: %91 olumlu. 'Her sorunumuzu dinler, çözüm üretir.'",
+        "tesis_yonetimi",
     ),
     (
-        "{ad} {soyad} bugün {ilce}'deki {firma} bayiinde 3 saat "
-        "kalarak stok düzenlemesine yardımcı oldu. Bayi sahibi: "
-        "'Gelmeseydi bu envanteri toparlayamazdık.'",
-        "bayi_yonetimi",
+        "{ad} {soyad} bugün {ilce}'deki {tesis} tesisinde 3 saat kalarak "
+        "yüksek sezon vardiya planına yardımcı oldu. Tesis müdürü: "
+        "'Gelmeseydi bu planı yetiştiremezdik.'",
+        "tesis_yonetimi",
     ),
     (
-        "{ad} {soyad} geçen ay bayilerin sipariş teslim süresini "
-        "ortalama 7 günden 3 güne indirdi. Lojistik departmanıyla "
-        "koordinasyonu sayesinde bayi şikayetleri %60 azaldı.",
-        "bayi_yonetimi",
+        "{ad} {soyad} geçen ay tesislerde açık arıza kapanma süresini "
+        "ortalama 7 günden 3 güne indirdi. Teknik ekiple koordinasyonu "
+        "sayesinde bakım kaynaklı misafir şikayeti %60 azaldı.",
+        "tesis_yonetimi",
     ),
     (
-        "{ad} {soyad} {bolge} bölgesinde bayiler için eğitim "
-        "programı başlattı. {sayi} bayiye {marka} ürün eğitimi "
-        "verildi. Katılım %100, geri bildirim mükemmel.",
-        "bayi_yonetimi",
+        "{ad} {soyad} {bolge} bölgesinde tesisler için misafir iletişimi "
+        "eğitimi başlattı. {sayi} tesiste resepsiyon ekibi eğitildi. "
+        "Katılım %100, geri bildirim mükemmel.",
+        "tesis_yonetimi",
     ),
 
     # Raporlama
     (
-        "{ad} {soyad} aylık saha raporunu her ayın 2'sinde, "
-        "eksiksiz ve zamanında teslim ediyor. Rapor içeriği: "
-        "satış verileri, stok durumu, bayi ziyaret notları, "
-        "fotoğraflı saha analizi. Yönetim: 'Örnek rapor.'",
+        "{ad} {soyad} aylık saha raporunu her ayın 2'sinde, eksiksiz ve "
+        "zamanında teslim ediyor. Rapor içeriği: doluluk verileri, açık arıza "
+        "durumu, tesis ziyaret notları, fotoğraflı saha analizi. "
+        "Yönetim: 'Örnek rapor.'",
         "raporlama",
     ),
     (
-        "{ad} {soyad} haftalık rapor formatını iyileştirdi. "
-        "Artık grafik ve trend analizleri de ekliyor. Bölge "
-        "müdürü: 'Tüm sorumlulara bu formatı öneriyorum.'",
+        "{ad} {soyad} haftalık rapor formatını iyileştirdi. Artık misafir "
+        "puanı trend analizlerini de ekliyor. Genel müdür: "
+        "'Tüm bölgelere bu formatı öneriyorum.'",
         "raporlama",
     ),
     (
-        "{ad} {soyad} bugün {ilce}'deki bayi denetim raporunu "
-        "tablet üzerinden anında sisteme girdi. Fotoğraf, "
-        "envanter sayımı ve bayi değerlendirmesi tek seferde. "
-        "Veri doğruluğu %100.",
+        "{ad} {soyad} bugün {ilce}'deki tesis denetim raporunu tablet "
+        "üzerinden anında sisteme girdi. Fotoğraf, eksik listesi ve tesis "
+        "değerlendirmesi tek seferde. Veri doğruluğu %100.",
         "raporlama",
     ),
 
-    # Saha denetimi
+    # Denetim takibi
     (
-        "{ad} {soyad} {bolge} bölgesindeki bayilerde standartlara "
-        "uygunluk denetimi yaptı. 12 bayide görsel standart skoru "
-        "ortalama 92/100. Eksikler raporlandı, aksiyon planı "
-        "hazır.",
-        "saha_denetimi",
+        "{ad} {soyad} {bolge} bölgesindeki tesislerde standartlara uygunluk "
+        "denetimi yaptı. 12 tesiste hijyen ve görsel standart skoru ortalama "
+        "92/100. Eksikler raporlandı, aksiyon planı hazır.",
+        "denetim_takibi",
     ),
     (
-        "{ad} {soyad} {firma} bayiindeki stok denetiminde tutarsızlık "
+        "{ad} {soyad} {tesis} tesisindeki depo denetiminde tutarsızlık "
         "yakaladı. Fiziki stok ile sistem kaydı arasında fark vardı. "
         "Anında düzeltme yaptırdı, süreç iyileştirme önerisi sundu.",
-        "saha_denetimi",
+        "denetim_takibi",
     ),
     (
-        "{ad} {soyad} kalite denetim turunda {bolge} bölgesinde "
-        "hiçbir bayide ciddi uygunsuzluk bulamadı. Ekipman "
-        "kalibrasyonları güncel, yangın tüpleri dolu, tabelalar "
-        "standart. Bölge koordinatörü tebrik etti.",
-        "saha_denetimi",
+        "{ad} {soyad} kalite denetim turunda {bolge} bölgesinde hiçbir "
+        "tesiste ciddi uygunsuzluk bulamadı. Yangın tüpleri dolu, mutfak "
+        "hijyen belgeleri güncel, kaçış yolları açık. Genel müdür tebrik etti.",
+        "denetim_takibi",
     ),
 ]
 
-_BS_NEGATIVE_TEMPLATES = [
-    # Bayi yönetimi
+_BM_NEGATIVE_TEMPLATES = [
+    # Tesis yonetimi
     (
-        "{ad} {soyad} {bolge} bölgesinde bayileri yeterince "
-        "ziyaret etmiyor. Son 2 ayda sadece 3 bayi ziyareti var. "
-        "Bayiler şikayetçi: 'Bizi unuttu, ne zaman geleceği belli "
-        "değil.'",
-        "bayi_yonetimi",
+        "{ad} {soyad} {bolge} bölgesinde tesisleri yeterince ziyaret etmiyor. "
+        "Son 2 ayda sadece 3 tesis ziyareti var. Tesis müdürleri şikayetçi: "
+        "'Bizi unuttu, ne zaman geleceği belli değil.'",
+        "tesis_yonetimi",
     ),
     (
-        "{ad} {soyad} bayilerin acil ihtiyaçlarına cevap vermiyor. "
-        "{firma} bayii 5 gündür stok sıkıntısı yaşıyor, defalarca "
-        "aradı ama dönüş alamadı. Bayi doğrudan genel müdürlüğe "
-        "şikayet etti.",
-        "bayi_yonetimi",
+        "{ad} {soyad} tesislerin acil ihtiyaçlarına cevap vermiyor. "
+        "{tesis} tesisinde 5 gündür sıcak su arızası var, defalarca aradılar "
+        "ama dönüş alamadılar. Tesis doğrudan genel müdürlüğe şikayet etti.",
+        "tesis_yonetimi",
     ),
     (
-        "{ad} {soyad} {ilce}'deki yeni bayi açılışında gerekli "
-        "desteği vermedi. Bayi tabela ve ekipman olmadan 2 hafta "
-        "bekledi. Bölge müdürü duruma müdahale etmek zorunda kaldı.",
-        "bayi_yonetimi",
+        "{ad} {soyad} {ilce}'deki yeni tesis açılışında gerekli desteği "
+        "vermedi. Tesis tabela ve ekipman olmadan 2 hafta bekledi. "
+        "Genel müdür duruma müdahale etmek zorunda kaldı.",
+        "tesis_yonetimi",
     ),
 
     # Raporlama
     (
-        "{ad} {soyad} geçen ayki raporunu 15 gün gecikmeli teslim "
-        "etti. Rapor içeriği yetersiz: satış verileri eksik, bayi "
-        "notları yok, fotoğrafsız. Geri çevrildi.",
+        "{ad} {soyad} geçen ayki raporunu 15 gün gecikmeli teslim etti. "
+        "Rapor içeriği yetersiz: doluluk verileri eksik, tesis notları yok, "
+        "fotoğrafsız. Geri çevrildi.",
         "raporlama",
     ),
     (
         "{ad} {soyad} haftalık raporunu hatalı verilerle doldurmuş. "
-        "3 bayinin satış rakamları sistem kayıtlarıyla uyuşmuyor. "
+        "3 tesisin doluluk rakamları sistem kayıtlarıyla uyuşmuyor. "
         "Veri güvenilirliği sorgulanıyor.",
         "raporlama",
     ),
 
-    # Saha denetimi
+    # Denetim takibi
     (
-        "{ad} {soyad} {bolge} bölgesindeki denetimde {firma} "
-        "bayiinde ciddi standart ihlalleri atlanmış. Başka bir "
-        "denetçi aynı bayiye gittiğinde: yangın tüpü süresi "
-        "geçmiş, tabela yıpranmış, raf düzeni standart dışı.",
-        "saha_denetimi",
+        "{ad} {soyad} {bolge} bölgesindeki denetimde {tesis} tesisinde ciddi "
+        "standart ihlalleri atlanmış. Başka bir denetçi aynı tesise "
+        "gittiğinde: yangın tüpü süresi geçmiş, mutfak hijyen kaydı eksik, "
+        "kaçış yolu kapalı.",
+        "denetim_takibi",
     ),
     (
         "{ad} {soyad} denetim formlarını 'göstermelik' dolduruyor. "
-        "Son denetimde 5 bayiyi ziyaret etmeden 'denetlendi' "
-        "olarak işaretlediği tespit edildi. Soruşturma başlatıldı.",
-        "saha_denetimi",
+        "Son denetimde 5 tesisi ziyaret etmeden 'denetlendi' olarak "
+        "işaretlediği tespit edildi. Soruşturma başlatıldı.",
+        "denetim_takibi",
     ),
 ]
 
-_BS_MIXED_NEUTRAL_TEMPLATES = [
+_BM_MIXED_NEUTRAL_TEMPLATES = [
     (
         "{ad} {soyad} {bolge} bölgesinde görevine yeni başladı. "
-        "Henüz bayilerle tanışma aşamasında. Performans "
-        "değerlendirmesi için erken.",
+        "Henüz tesislerle tanışma aşamasında. Performans değerlendirmesi "
+        "için erken.",
         "karisik",
     ),
     (
-        "{ad} {soyad} bayileri ayda bir ziyaret ediyor — şirket "
-        "standardı tam bu. Ne fazla ne eksik. Rutin devam ediyor.",
+        "{ad} {soyad} tesisleri ayda bir ziyaret ediyor — şirket standardı "
+        "tam bu. Ne fazla ne eksik. Rutin devam ediyor.",
         "karisik",
     ),
 ]
@@ -875,10 +887,11 @@ class Generator:
             "ilce": self._pick(_DISTRICTS),
             "bolge": self._pick(_SERVICE_AREAS if entity_type == "isci" else _REGIONS),
             "firma": self._pick(_COMPANY_NAMES),
+            "tesis": self._pick(_TESIS_NAMES),
             "beceri": self._pick(_SKILLS),
-            "marka": self._pick(_TIRE_BRANDS),
-            "lastik_tipi": self._pick(_TIRE_TYPES),
-            "urun": self._pick(_PRODUCTS),
+            "kanal": self._pick(_KANALLAR),
+            "oda_tipi": self._pick(_ODA_TIPLERI),
+            "hizmet": self._pick(_HIZMETLER),
             "sayi": self._rand_int(2, 50),
             "gecen_ay": self._pick(["Ocak", "Şubat", "Mart", "Nisan", "Mayıs",
                                      "Haziran", "Temmuz", "Ağustos", "Eylül",
@@ -908,20 +921,20 @@ class Generator:
             ))
         return entities
 
-    def _gen_bayi_entities(self, count: int) -> list[EntityDef]:
+    def _gen_tesis_entities(self, count: int) -> list[EntityDef]:
         entities: list[EntityDef] = []
         for i in range(count):
-            eid = f"bayi-{i + 1:03d}"
+            eid = f"tesis-{i + 1:03d}"
             entities.append(EntityDef(
                 id=eid,
-                entity_type="bayi",
+                entity_type="tesis",
                 fields={
-                    "satis_adedi": self._rand_int(50, 500),
+                    "oda_sayisi": self._rand_int(24, 320),
                     "bolge": self._pick(_REGIONS),
                 },
-                free_text=f"{self._pick(_COMPANY_NAMES)} — {self._pick(_CITIES)} "
-                          f"merkezli lastik satış bayisi. "
-                          f"Kuruluş: {self._rand_int(2005, 2023)}.",
+                free_text=f"{self._pick(_TESIS_NAMES)} — {self._pick(_CITIES)} "
+                          f"merkezli {self._pick(_TESIS_TIPLERI)}. "
+                          f"Açılış: {self._rand_int(2005, 2023)}.",
             ))
         return entities
 
@@ -942,19 +955,19 @@ class Generator:
             ))
         return entities
 
-    def _gen_bolge_sorumlusu_entities(self, count: int) -> list[EntityDef]:
+    def _gen_bolge_muduru_entities(self, count: int) -> list[EntityDef]:
         entities: list[EntityDef] = []
         for i in range(count):
-            eid = f"bs-{i + 1:03d}"
+            eid = f"bm-{i + 1:03d}"
             entities.append(EntityDef(
                 id=eid,
-                entity_type="bolge_sorumlusu",
+                entity_type="bolge_muduru",
                 fields={
-                    "sorumlu_bayi_sayisi": self._rand_int(5, 20),
+                    "sorumlu_tesis_sayisi": self._rand_int(5, 20),
                     "bolge": self._pick(_REGIONS),
                 },
                 free_text=f"{self._pick(_FIRST_NAMES)} {self._pick(_LAST_NAMES)} "
-                          f"— {self._pick(_REGIONS)} bölgesi sorumlusu. "
+                          f"— {self._pick(_REGIONS)} bölge müdürü. "
                           f"{self._rand_int(2, 12)} yıl deneyim.",
             ))
         return entities
@@ -967,12 +980,12 @@ class Generator:
         templates_map = {
             "isci": (_ISCI_POSITIVE_TEMPLATES, _ISCI_NEGATIVE_TEMPLATES,
                      _ISCI_MIXED_NEUTRAL_TEMPLATES),
-            "bayi": (_BAYI_POSITIVE_TEMPLATES, _BAYI_NEGATIVE_TEMPLATES,
-                     _BAYI_MIXED_NEUTRAL_TEMPLATES),
+            "tesis": (_TESIS_POSITIVE_TEMPLATES, _TESIS_NEGATIVE_TEMPLATES,
+                      _TESIS_MIXED_NEUTRAL_TEMPLATES),
             "cari": (_CARI_POSITIVE_TEMPLATES, _CARI_NEGATIVE_TEMPLATES,
                      _CARI_MIXED_NEUTRAL_TEMPLATES),
-            "bolge_sorumlusu": (_BS_POSITIVE_TEMPLATES, _BS_NEGATIVE_TEMPLATES,
-                                _BS_MIXED_NEUTRAL_TEMPLATES),
+            "bolge_muduru": (_BM_POSITIVE_TEMPLATES, _BM_NEGATIVE_TEMPLATES,
+                             _BM_MIXED_NEUTRAL_TEMPLATES),
         }
         pos, neg, mix = templates_map[entity_type]
 
@@ -1023,17 +1036,17 @@ class Generator:
             serialisation / API calls.
         """
         entity_counts = entity_counts or {
-            "isci": 50, "bayi": 50, "cari": 30, "bolge_sorumlusu": 20,
+            "isci": 50, "tesis": 50, "cari": 30, "bolge_muduru": 20,
         }
         signals_per_entity = signals_per_entity or {
-            "isci": 25, "bayi": 20, "cari": 20, "bolge_sorumlusu": 20,
+            "isci": 25, "tesis": 20, "cari": 20, "bolge_muduru": 20,
         }
 
         generators = {
             "isci": self._gen_isci_entities,
-            "bayi": self._gen_bayi_entities,
+            "tesis": self._gen_tesis_entities,
             "cari": self._gen_cari_entities,
-            "bolge_sorumlusu": self._gen_bolge_sorumlusu_entities,
+            "bolge_muduru": self._gen_bolge_muduru_entities,
         }
 
         all_entities: list[EntityDef] = []

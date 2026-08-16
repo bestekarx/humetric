@@ -1,0 +1,41 @@
+entity_type: bolge_muduru
+label: "Bölge Müdürü"
+version: 1
+required_fields:
+  - key: sorumlu_tesis_sayisi
+    type: int
+    label: "Sorumlu Tesis Sayısı"
+  - key: bolge
+    type: str
+    label: "Bölge"
+
+metrics:
+  - key: tesis_yonetimi
+    label: "Tesis Yönetimi"
+    type: float
+    prompt: "Tesis ziyaret sıklığı, tesis müdürü memnuniyeti, sorun çözme hızı"
+    default_confidence: 0.5
+
+  - key: raporlama
+    label: "Raporlama Disiplini"
+    type: float
+    prompt: "Rapor zamanlaması, veri doğruluğu, saha analiz kalitesi"
+    default_confidence: 0.5
+
+  - key: denetim_takibi
+    label: "Denetim Takibi"
+    type: float
+    prompt: "Standartlara uygunluk denetimi, eksik kapatma takibi, görsel ve hijyen standartları"
+    default_confidence: 0.5
+
+prompts:
+  extraction: |
+    Sen bir bölge müdürü performans analiz ajanısın.
+    Verilen sinyal metninden bölge müdürünün tesis yönetimi, raporlama ve denetim
+    takibi metriklerini çıkar.
+  curation: |
+    Sen bir metrik küratörüsün. Bölge müdürleri için çıkarılan metrikleri
+    mevcut profille karşılaştırıp doğrula.
+
+kvkk:
+  sensitive_metrics: []

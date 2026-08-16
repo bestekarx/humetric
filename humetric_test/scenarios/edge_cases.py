@@ -2,7 +2,7 @@ from ..client import HuMetricClient
 from ..logger import ScenarioLogger
 from ..runner import ScenarioRunner
 
-LASTIK_BAYI_YAML = """entity_type: test_edge
+EDGE_PACK_YAML = """entity_type: test_edge
 label: "Edge Case Test"
 version: 1
 required_fields:
@@ -90,11 +90,11 @@ def build_edge_cases_scenario(runner: ScenarioRunner, client: HuMetricClient,
 
 
 def _test_duplicate_pack(client, logger):
-    r = client.create_pack(LASTIK_BAYI_YAML)
+    r = client.create_pack(EDGE_PACK_YAML)
     logger.add(r)
 
     r2 = client._request("POST", "/packs", "Edge: ayni pack tekrar (ham)",
-                         body={"yaml_text": LASTIK_BAYI_YAML})
+                         body={"yaml_text": EDGE_PACK_YAML})
     if r2.response_status == 409:
         logger.add_passed("Edge: ayni pack tekrar -> 409", "POST", "/v1/packs",
                           response_status=409, message="Duplicate pack dogru sekilde reddedildi")

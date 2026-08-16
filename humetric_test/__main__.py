@@ -6,7 +6,7 @@ import uuid
 from .client import HuMetricClient
 from .logger import ScenarioLogger
 from .runner import ScenarioRunner
-from .scenarios.lastik_bayi import build_lastik_bayi_scenario
+from .scenarios.otel_tesis import build_otel_tesis_scenario
 from .scenarios.saha_isci import build_saha_isci_scenario
 from .scenarios.ilac_mumessili import build_ilac_mumessili_scenario
 from .scenarios.edge_cases import build_edge_cases_scenario
@@ -15,7 +15,7 @@ from .scenarios.beta_smoke import build_beta_smoke_scenario
 DEFAULT_BASE_URL = os.environ.get("HUMETRIC_TEST_BASE_URL", "http://localhost:8002/v1")
 
 SCENARIOS = {
-    "lastik_bayi": ("Lastik Dagitim Bayisi", build_lastik_bayi_scenario),
+    "otel_tesis": ("Konaklama Tesisi", build_otel_tesis_scenario),
     "saha_isci": ("Saha Hizmet Iscisi", build_saha_isci_scenario),
     "ilac_mumessili": ("Ilac Pazarlama Mumessili", build_ilac_mumessili_scenario),
     "edge_cases": ("Edge Case Testleri", build_edge_cases_scenario),
@@ -30,7 +30,7 @@ STANDALONE_SCENARIOS = {"beta_smoke"}
 def main():
     parser = argparse.ArgumentParser(description="HuMetric API Test Harness")
     parser.add_argument("--scenario", type=str, default=None,
-                        help="Belirli bir senaryoyu calistir (register, lastik_bayi, saha_isci, ilac_mumessili, edge_cases, beta_smoke)")
+                        help="Belirli bir senaryoyu calistir (register, otel_tesis, saha_isci, ilac_mumessili, edge_cases, beta_smoke)")
     parser.add_argument("--base-url", type=str, default=DEFAULT_BASE_URL,
                         help=f"API taban URL'i (varsayilan: {DEFAULT_BASE_URL})")
     parser.add_argument("--verbose", action="store_true", help="Detayli cikti")

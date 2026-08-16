@@ -30,11 +30,11 @@ def _request(scopes=None):
     return SimpleNamespace(state=SimpleNamespace(tenant_id=1, scopes=scopes))
 
 
-def _entity(entity_id="bayi-1", entity_type="bayi"):
+def _entity(entity_id="tesis-1", entity_type="tesis"):
     return SimpleNamespace(id=entity_id, entity_type=entity_type)
 
 
-def _pack(entity_type="bayi", sensitive_metrics=None):
+def _pack(entity_type="tesis", sensitive_metrics=None):
     return SimpleNamespace(definition={
         "entity_type": entity_type,
         "metrics": [
@@ -46,7 +46,7 @@ def _pack(entity_type="bayi", sensitive_metrics=None):
     })
 
 
-def _metric_row(metric_key="tahsilat_disiplini", trace_data=None):
+def _metric_row(metric_key="temizlik_ve_bakim", trace_data=None):
     return SimpleNamespace(
         metric_key=metric_key,
         value=0.42,
@@ -81,7 +81,7 @@ async def test_explain_metric_returns_reasoning_and_source_span():
          patch("humetric.api.Store.get_metric_with_trace",
                new=AsyncMock(return_value=_metric_row(trace_data=trace))):
         result = await explain_metric(
-            entity_id="bayi-1", metric_key="tahsilat_disiplini",
+            entity_id="tesis-1", metric_key="temizlik_ve_bakim",
             request=_request(), db=None,
         )
 
@@ -100,7 +100,7 @@ async def test_explain_metric_entity_not_found_404():
     with patch("humetric.api.Store.get_entity", new=AsyncMock(return_value=None)):
         with pytest.raises(HTTPException) as exc_info:
             await explain_metric(
-                entity_id="yok", metric_key="tahsilat_disiplini",
+                entity_id="yok", metric_key="temizlik_ve_bakim",
                 request=_request(), db=None,
             )
     assert exc_info.value.status_code == 404
@@ -113,7 +113,7 @@ async def test_explain_metric_metric_not_found_404():
          patch("humetric.api.Store.get_metric_with_trace", new=AsyncMock(return_value=None)):
         with pytest.raises(HTTPException) as exc_info:
             await explain_metric(
-                entity_id="bayi-1", metric_key="olmayan_metrik",
+                entity_id="tesis-1", metric_key="olmayan_metrik",
                 request=_request(), db=None,
             )
     assert exc_info.value.status_code == 404
@@ -121,8 +121,8 @@ async def test_explain_metric_metric_not_found_404():
 
 @pytest.mark.asyncio
 async def test_explain_metric_sensitive_metric_hidden_returns_404_not_403():
-    """Hassas ve visible_to gate'ini geçemeyen metrik için 404 dönmeli (403 değil) —
-    varlığının sızmaması gerekiyor."""
+    """A sensitive metric that fails the visible_to gate must return 404 (not 403) —
+    its existence must not leak."""
     with patch("humetric.api.Store.get_entity", new=AsyncMock(return_value=_entity())), \
          patch("humetric.api.Store.get_active_pack_for_type",
                new=AsyncMock(return_value=_pack(sensitive_metrics=["gizli_metrik"]))), \
@@ -130,7 +130,7 @@ async def test_explain_metric_sensitive_metric_hidden_returns_404_not_403():
                new=AsyncMock(return_value=_metric_row(metric_key="gizli_metrik"))):
         with pytest.raises(HTTPException) as exc_info:
             await explain_metric(
-                entity_id="bayi-1", metric_key="gizli_metrik",
+                entity_id="tesis-1", metric_key="gizli_metrik",
                 request=_request(scopes=["entities:read"]), db=None,
             )
     assert exc_info.value.status_code == 404

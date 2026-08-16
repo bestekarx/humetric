@@ -282,8 +282,8 @@ devam edilir.**
 ## 7. Pack `display:` bloğu
 
 Pack "ne ölçüldüğünü" biliyordu, "nasıl gösterileceğini" bilmiyordu. En keskin
-örnek `packs/lastik-bayi.yaml`: `kayip_riski` metriğinin yön bilgisi prompt'un
-içine **düz yazı yorum** olarak gömülmüştü ("YÜKSEK değer = DÜŞÜK risk"). UI
+örnek `packs/otel-tesis.yaml`: `tekrar_gelme_egilimi` metriğinin yön bilgisi prompt'un
+içine **düz yazı yorum** olarak gömülmüştü ("YÜKSEK değer = YÜKSEK sadakat"). UI
 bunu okuyamaz, yanlış renge boyardı.
 
 ```yaml
@@ -464,7 +464,7 @@ Uygulama sırasında koşulan ve tekrar koşulması gereken kontroller:
 - Trace `text` ve `occurred_at` taşıyor
 
 **Pack normalizasyonu (20 kontrol)**
-- Gerçek `lastik-bayi.yaml` (display bloğu **yok**) varsayılanlarla düzgün
+- Gerçek `otel-tesis.yaml` (display bloğu **yok**) varsayılanlarla düzgün
   normalize oluyor
 - `lower_is_better`: yüksek değer `critical`, düşük değer `good` — yön gerçekten
   ters çeviriyor

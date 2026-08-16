@@ -12,7 +12,7 @@ Features:
 Usage:
     python scripts/benchmark.py submit \\
         --api-key hm_live_xxx --base-url http://localhost:8002 \\
-        --isci 50 --bayi 50 --cari 30 --bs 20 \\
+        --isci 50 --tesis 50 --cari 30 --bm 20 \\
         --signals-per 25 --concurrency 200
 
     python scripts/benchmark.py validate \\
@@ -59,10 +59,10 @@ class RunConfig:
     seed: int = 42
 
     entity_counts: dict[str, int] = field(default_factory=lambda: {
-        "isci": 50, "bayi": 50, "cari": 30, "bolge_sorumlusu": 20,
+        "isci": 50, "tesis": 50, "cari": 30, "bolge_muduru": 20,
     })
     signals_per_entity: dict[str, int] = field(default_factory=lambda: {
-        "isci": 25, "bayi": 20, "cari": 20, "bolge_sorumlusu": 20,
+        "isci": 25, "tesis": 20, "cari": 20, "bolge_muduru": 20,
     })
 
     @property
@@ -430,15 +430,15 @@ async def generate_report(cfg: RunConfig, entity_ids: list[str],
 # ---------------------------------------------------------------------------
 
 def _parse_counts(args: Any, prefix: str) -> dict[str, int]:
-    """Parse --isci 50 --bayi 30 style args into a dict."""
-    mapping = {"isci": "isci", "bayi": "bayi", "cari": "cari", "bs": "bolge_sorumlusu"}
+    """Parse --isci 50 --tesis 30 style args into a dict."""
+    mapping = {"isci": "isci", "tesis": "tesis", "cari": "cari", "bm": "bolge_muduru"}
     result: dict[str, int] = {}
     for cli_key, etype in mapping.items():
         val = getattr(args, cli_key, None)
         if val is not None and val >= 0:
             result[etype] = val
     # Set missing types to 0 if they were not requested
-    for etype in ("isci", "bayi", "cari", "bolge_sorumlusu"):
+    for etype in ("isci", "tesis", "cari", "bolge_muduru"):
         result.setdefault(etype, 0)
     return result
 
@@ -451,7 +451,7 @@ def _make_config(args: Any) -> RunConfig:
         batch_size=args.batch_size,
         seed=args.seed,
         entity_counts=_parse_counts(args, "entity"),
-        signals_per_entity={k: args.signals_per for k in ("isci", "bayi", "cari", "bolge_sorumlusu")},
+        signals_per_entity={k: args.signals_per for k in ("isci", "tesis", "cari", "bolge_muduru")},
     )
 
 
@@ -549,9 +549,9 @@ def _add_common_args(parser: ArgumentParser) -> None:
 
 def _add_entity_count_args(parser: ArgumentParser) -> None:
     parser.add_argument("--isci", type=int, default=50, help="Number of field worker entities")
-    parser.add_argument("--bayi", type=int, default=50, help="Number of tire dealer entities")
+    parser.add_argument("--tesis", type=int, default=50, help="Number of hotel property entities")
     parser.add_argument("--cari", type=int, default=30, help="Number of customer entities")
-    parser.add_argument("--bs", type=int, default=20, help="Number of regional manager entities")
+    parser.add_argument("--bm", type=int, default=20, help="Number of regional manager entities")
     parser.add_argument("--signals-per", type=int, default=25, help="Signals per entity")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--batch-size", type=int, default=100, help="Entity creation batch size")

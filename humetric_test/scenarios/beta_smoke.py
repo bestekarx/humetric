@@ -16,7 +16,7 @@ from ..client import HuMetricClient
 from ..logger import ScenarioLogger
 from ..runner import ScenarioRunner
 
-PACK_YAML_PATH = Path(__file__).resolve().parents[2] / "packs" / "lastik-bayi.yaml"
+PACK_YAML_PATH = Path(__file__).resolve().parents[2] / "packs" / "otel-tesis.yaml"
 
 STRONG_PASSWORD = "BetaSmoke!2026xZ"
 
@@ -96,9 +96,9 @@ def build_beta_smoke_scenario(runner: ScenarioRunner, client: HuMetricClient,
 
     # ── 4. Pack wizard (LLM smoke) ──────────────────────────────────────────
     wizard_desc = (
-        "Lastik dagitim bayilerini degerlendiren bir sistem. Her bayi icin satis "
-        "performansi, tahsilat disiplini ve musteri memnuniyeti gibi metrikleri "
-        "sinyal metinlerinden cikar."
+        "Konaklama tesislerini degerlendiren bir sistem. Her tesis icin temizlik, "
+        "personel ilgisi ve misafirin tekrar gelme egilimi gibi metrikleri "
+        "misafir yorumlarindan cikar."
     )
     rw = client.create_pack_wizard(wizard_desc)
     logger.add(rw)
@@ -112,7 +112,7 @@ def build_beta_smoke_scenario(runner: ScenarioRunner, client: HuMetricClient,
             logger.add_failed("beta_smoke:wizard-valid", "", "",
                               message=f"wizard validation_errors={v_errors}")
 
-    # ── 5. Create pack (deterministic lastik-bayi for a stable journey) ─────
+    # ── 5. Create pack (deterministic otel-tesis for a stable journey) ──────
     pack_yaml = PACK_YAML_PATH.read_text(encoding="utf-8")
     pack_result = runner.run_pack_ops(pack_yaml, logger)
     if not pack_result:
@@ -122,16 +122,16 @@ def build_beta_smoke_scenario(runner: ScenarioRunner, client: HuMetricClient,
     # ── 6. Entities ─────────────────────────────────────────────────────────
     entities = [
         {
-            "id": "smoke_bayi_ist",
-            "entity_type": "bayi",
-            "fields": {"bolge": "Istanbul", "satis_adedi": 1200},
-            "free_text": "Istanbul Anadolu yakasinda faaliyet gosteren lastik dagitim bayisi.",
+            "id": "smoke_tesis_ist",
+            "entity_type": "tesis",
+            "fields": {"bolge": "Istanbul", "oda_sayisi": 180},
+            "free_text": "Istanbul Sultanahmet'te tarihi binada hizmet veren sehir oteli.",
         },
         {
-            "id": "smoke_bayi_ank",
-            "entity_type": "bayi",
-            "fields": {"bolge": "Ankara", "satis_adedi": 850},
-            "free_text": "Ankara merkezde agir vasita lastiklerinde uzmanlasmis bayi.",
+            "id": "smoke_tesis_ank",
+            "entity_type": "tesis",
+            "fields": {"bolge": "Ankara", "oda_sayisi": 96},
+            "free_text": "Ankara Kizilay'da is seyahatlerine hizmet veren sehir oteli.",
         },
     ]
     created = runner.run_entity_ops(entities, logger)
@@ -141,18 +141,18 @@ def build_beta_smoke_scenario(runner: ScenarioRunner, client: HuMetricClient,
 
     # ── 7 + 8. Signals (2 per entity) + poll to completion ──────────────────
     signals = [
-        {"entity_id": "smoke_bayi_ist", "entity_type": "bayi",
-         "text": "Bayi bu ay %15 buyume gosterdi. Satis hedefinin %110'u yakalandi. "
-                 "Musteri sikayeti yok, tahsilatlar zamaninda yapildi."},
-        {"entity_id": "smoke_bayi_ist", "entity_type": "bayi",
-         "text": "Istanbul bayisi son ceyrekte pazar payini %5 artirdi. Musteri "
-                 "memnuniyeti anketinde 4.7/5 puan aldi."},
-        {"entity_id": "smoke_bayi_ank", "entity_type": "bayi",
-         "text": "Ankara bayisi agir vasita segmentinde lider. Tahsilat performansi "
-                 "sektor ortalamasinin uzerinde. 2 gecikmis odeme cozuldu."},
-        {"entity_id": "smoke_bayi_ank", "entity_type": "bayi",
-         "text": "Ankara bayisi yeni filo anlasmasi imzaladi. Aylik satis hacmi %20 "
-                 "artti. Musterilerden olumlu geri donusler aliniyor."},
+        {"entity_id": "smoke_tesis_ist", "entity_type": "tesis",
+         "text": "Denetim skoru 96/100, acik ariza kaydi yok. Misafir yorumu: "
+                 "odalar tertemizdi, resepsiyon gece yarisi bile ilgilendi."},
+        {"entity_id": "smoke_tesis_ist", "entity_type": "tesis",
+         "text": "Ses yalitimi yatirimi sonrasi gurultu sikayeti 12'den 2'ye dustu. "
+                 "Misafir memnuniyeti anketinde 4.7/5 puan aldi."},
+        {"entity_id": "smoke_tesis_ank", "entity_type": "tesis",
+         "text": "Kahvalti ve oda servisi olumlu degerlendirildi. Tekrar konaklama "
+                 "orani %41. Iki bakim talebi ayni gun kapatildi."},
+        {"entity_id": "smoke_tesis_ank", "entity_type": "tesis",
+         "text": "Kurumsal anlasmali misafirlerden olumlu geri donusler aliniyor. "
+                 "Check-in suresi ortalama 3 dakikaya indi."},
     ]
     signal_results = runner.run_signal_ops(signals, logger)
 
@@ -187,7 +187,7 @@ def build_beta_smoke_scenario(runner: ScenarioRunner, client: HuMetricClient,
                                   message="trace_data.entity_metrics empty")
 
     # ── 10. Metric verification ─────────────────────────────────────────────
-    rm = client.get_entity_metrics("smoke_bayi_ist")
+    rm = client.get_entity_metrics("smoke_tesis_ist")
     logger.add(rm)
     if runner._check(rm, "GET /v1/entities/{id}/metrics") and rm.response_body:
         metrics = rm.response_body.get("metrics") or []
@@ -202,14 +202,14 @@ def build_beta_smoke_scenario(runner: ScenarioRunner, client: HuMetricClient,
 
     # ── 11. Query ───────────────────────────────────────────────────────────
     rq = client.query_free_text(
-        "satis performansi ve tahsilati guclu bayi",
-        entity_type="bayi", top_k=5, include_reasoning=True,
+        "temizligi ve personel ilgisi guclu tesis",
+        entity_type="tesis", top_k=5, include_reasoning=True,
     )
     logger.add(rq)
     if runner._check(rq, "POST /v1/query") and rq.response_body:
         results = rq.response_body.get("results") or []
         ids = {r.get("entity_id") for r in results}
-        if results and ids & {"smoke_bayi_ist", "smoke_bayi_ank"}:
+        if results and ids & {"smoke_tesis_ist", "smoke_tesis_ank"}:
             logger.add_passed("beta_smoke:query", "", "",
                               message=f"query returned {len(results)} results incl. created entities")
         else:
