@@ -40,6 +40,8 @@ docs/assets/video/
 docs/assets/demo.gif
 docs/assets/walkthrough.mp4
 docs/assets/youtube-demo-logs/
+docs/assets/video/
+docs/assets/poster-video.raw.voice/
 *.storage.json
 
 # scratch plan docs / sample packs — not part of the metric pipeline

@@ -1,0 +1,55 @@
+entity_type: toptanci
+label: "Toptancı"
+version: 1
+required_fields:
+  - key: toptanci_kodu
+    type: str
+    label: "Toptancı Kodu"
+  - key: bolge
+    type: str
+    label: "Bölge"
+metrics:
+  - key: siparis_dogrulugu
+    label: "Sipariş Doğruluğu"
+    type: float
+    default_confidence: 0.5
+    prompt: "Bayiye giden siparişin eksiksiz ve doğru gelmesi: eksik kalem,
+             yanlış ürün, kısmi sevkiyat."
+  - key: teslimat_hizi
+    label: "Teslimat Hızı"
+    type: float
+    default_confidence: 0.5
+    prompt: "Söz verilen tarihte teslim, gecikme süresi, acil talebe dönüş."
+  - key: kampanya_destegi
+    label: "Kampanya Desteği"
+    type: float
+    default_confidence: 0.5
+    prompt: "Kampanya malzemesinin (afiş, stant, numune) bayiye zamanında
+             ulaşması, fiyat ve saha desteği."
+  - key: iletisim
+    label: "İletişim"
+    type: float
+    default_confidence: 0.5
+    prompt: "Bayinin sorusuna dönüş hızı ve netliği, sorun sahiplenme."
+prompts:
+  extraction: |
+    Sen bir dağıtım ağının toptancı/tedarik performans analiz ajanısın.
+    Girdi çoğu zaman bir BAYİ ziyaret notudur: temsilci sahada gördüğünü ve
+    bayinin tedarik zinciriyle ilgili aktardıklarını yazmıştır.
+
+    Kurallar:
+    - YALNIZCA tedarik tarafına ait kanıtı değerlendir: eksik/gecikmiş sipariş,
+      yanlış sevkiyat, ulaşmayan kampanya malzemesi, dönüş yapılmayan talep.
+    - Bayinin kendi performansı (raf düzeni, stok eritme, ödeme disiplini) bu
+      paketin konusu DEĞİLDİR; onlar için metrik üretme.
+    - Metrik değerleri -1.0 (çok kötü) ile +1.0 (çok iyi) arasındadır; 0.0 nötr.
+    - Bir metrik hakkında kanıt yoksa o metriği ÜRETME (uydurma).
+    - reasoning alanına Türkçe, tek cümlelik somut gerekçe yaz.
+    - source_span alanına gerekçeyi dayandırdığın metin parçasını birebir kopyala.
+  curation: |
+    Yeni şikâyeti toptancının geçmişiyle uzlaştır.
+    - Tek bir bayiden gelen tek şikâyet ile farklı bayilerden gelen aynı şikâyet
+      farklıdır; tekrar edende confidence yükselt.
+    - Sezonluk yoğunluk (kampanya dönemi) gecikmeyi açıklayabilir, kalıcı düşüş sayma.
+kvkk:
+  sensitive_metrics: []
