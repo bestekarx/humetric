@@ -1,0 +1,34 @@
+[
+  {
+    "case": "cagri_merkezi_iyi_cozum",
+    "latency_s": 12.4,
+    "json_valid": true,
+    "n_metrics": 0,
+    "error": null,
+    "raw_output": {}
+  },
+  {
+    "case": "cagri_merkezi_eskalasyon",
+    "latency_s": 3.19,
+    "json_valid": true,
+    "n_metrics": 0,
+    "error": null,
+    "raw_output": {}
+  },
+  {
+    "case": "bayi_iyi_performans",
+    "latency_s": 9.18,
+    "json_valid": true,
+    "n_metrics": 0,
+    "error": null,
+    "raw_output": {}
+  },
+  {
+    "case": "bayi_riskli",
+    "latency_s": 4.25,
+    "json_valid": true,
+    "n_metrics": 0,
+    "error": null,
+    "raw_output": {}
+  }
+]
