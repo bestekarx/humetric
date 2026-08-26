@@ -22,11 +22,13 @@ from .db.models import (
     Entity,
     EntityMetric,
     EntityMetricHistory,
+    MeteringRecord,
     MetricPack,
     Signal,
     Task,
     Tenant,
     UsageRecord,
+    UserExport,
 )
 
 # Time buckets the chronological batch claim understands (date_trunc units).
@@ -1294,6 +1296,155 @@ class Store:
             ).limit(1)
         )
         return result.scalar_one_or_none() is not None
+
+    # --- UserExport (user-facing raw data export, Spec: user data export) ---
+
+    @staticmethod
+    async def create_export_request(
+        db: AsyncSession, tenant_id: int, fmt: str, recipient_email: str,
+    ) -> tuple[Task, UserExport]:
+        """Enqueue an export_request task and its tracking row in one transaction."""
+        task = Task(
+            tenant_id=tenant_id, task_type="export_request", status="queued",
+            payload={"format": fmt},
+        )
+        db.add(task)
+        await db.flush()
+        export = UserExport(
+            tenant_id=tenant_id, task_id=task.id, format=fmt,
+            status="pending", recipient_email=recipient_email,
+        )
+        db.add(export)
+        await db.flush()
+        await db.commit()
+        return task, export
+
+    @staticmethod
+    async def has_pending_export(db: AsyncSession, tenant_id: int) -> bool:
+        """True if the tenant already has a pending/processing export request."""
+        result = await db.execute(
+            select(UserExport.id).where(
+                UserExport.tenant_id == tenant_id,
+                UserExport.status.in_(["pending", "processing"]),
+            ).limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def get_export_by_task_id(db: AsyncSession, task_id: int) -> UserExport | None:
+        result = await db.execute(select(UserExport).where(UserExport.task_id == task_id))
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def mark_export_processing(db: AsyncSession, export_id: int) -> None:
+        await db.execute(
+            update(UserExport).where(UserExport.id == export_id).values(status="processing")
+        )
+        await db.commit()
+
+    @staticmethod
+    async def mark_export_completed(
+        db: AsyncSession, export_id: int, file_path: str, expires_at: datetime,
+    ) -> None:
+        await db.execute(
+            update(UserExport).where(UserExport.id == export_id).values(
+                status="completed",
+                file_path=file_path,
+                completed_at=datetime.now(timezone.utc),
+                expires_at=expires_at,
+            )
+        )
+        await db.commit()
+
+    @staticmethod
+    async def mark_export_failed(db: AsyncSession, export_id: int, error: str) -> None:
+        await db.execute(
+            update(UserExport).where(UserExport.id == export_id).values(
+                status="failed", error_message=error,
+            )
+        )
+        await db.commit()
+
+    @staticmethod
+    async def list_expired_exports(db: AsyncSession, now: datetime) -> list[UserExport]:
+        """Completed exports past their retention window (admin session, no RLS)."""
+        result = await db.execute(
+            select(UserExport).where(
+                UserExport.status == "completed",
+                UserExport.expires_at.isnot(None),
+                UserExport.expires_at < now,
+            )
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def delete_export_record(db: AsyncSession, export_id: int) -> None:
+        from sqlalchemy import delete as sa_delete
+
+        await db.execute(sa_delete(UserExport).where(UserExport.id == export_id))
+        await db.commit()
+
+    # --- Full-tenant data listing (user export — keyset-paginated) ---
+
+    @staticmethod
+    async def list_all_entities_for_tenant(
+        db: AsyncSession, tenant_id: int, *, after_id: str | None = None, limit: int = 1000,
+    ) -> list[Entity]:
+        stmt = select(Entity).where(Entity.tenant_id == tenant_id)
+        if after_id is not None:
+            stmt = stmt.where(Entity.id > after_id)
+        result = await db.execute(stmt.order_by(Entity.id.asc()).limit(limit))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_all_metrics_for_tenant(
+        db: AsyncSession, tenant_id: int, *, after_id: int | None = None, limit: int = 1000,
+    ) -> list[EntityMetric]:
+        stmt = select(EntityMetric).where(EntityMetric.tenant_id == tenant_id)
+        if after_id is not None:
+            stmt = stmt.where(EntityMetric.id > after_id)
+        result = await db.execute(stmt.order_by(EntityMetric.id.asc()).limit(limit))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_all_metric_history_for_tenant(
+        db: AsyncSession, tenant_id: int, *, after_id: int | None = None, limit: int = 1000,
+    ) -> list[EntityMetricHistory]:
+        stmt = select(EntityMetricHistory).where(EntityMetricHistory.tenant_id == tenant_id)
+        if after_id is not None:
+            stmt = stmt.where(EntityMetricHistory.id > after_id)
+        result = await db.execute(stmt.order_by(EntityMetricHistory.id.asc()).limit(limit))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_all_signals_for_tenant(
+        db: AsyncSession, tenant_id: int, *, after_id: str | None = None, limit: int = 1000,
+    ) -> list[Signal]:
+        stmt = select(Signal).where(Signal.tenant_id == tenant_id)
+        if after_id is not None:
+            stmt = stmt.where(Signal.id > after_id)
+        result = await db.execute(stmt.order_by(Signal.id.asc()).limit(limit))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_all_usage_records_for_tenant(
+        db: AsyncSession, tenant_id: int, *, after_id: int | None = None, limit: int = 1000,
+    ) -> list[UsageRecord]:
+        stmt = select(UsageRecord).where(UsageRecord.tenant_id == tenant_id)
+        if after_id is not None:
+            stmt = stmt.where(UsageRecord.id > after_id)
+        result = await db.execute(stmt.order_by(UsageRecord.id.asc()).limit(limit))
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def list_all_metering_records_for_tenant(
+        db: AsyncSession, tenant_id: int, *, after_id: int | None = None, limit: int = 1000,
+    ) -> list[MeteringRecord]:
+        stmt = select(MeteringRecord).where(MeteringRecord.tenant_id == tenant_id)
+        if after_id is not None:
+            stmt = stmt.where(MeteringRecord.id > after_id)
+        result = await db.execute(stmt.order_by(MeteringRecord.id.asc()).limit(limit))
+        return list(result.scalars().all())
 
 # ── helpers ────────────────────────────────────────────────────
 

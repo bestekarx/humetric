@@ -277,6 +277,109 @@ async def process_lakehouse_export_task(db: AsyncSession, task) -> None:
     _log.info("Lakehouse export task %d done: %s", task.id, stats)
 
 
+# Tables included in a user data export, mapped to the Store method that
+# yields the tenant's rows for that table, keyset-paginated.
+_USER_EXPORT_TABLES: list[tuple[str, str]] = [
+    ("entities", "list_all_entities_for_tenant"),
+    ("metrics", "list_all_metrics_for_tenant"),
+    ("metric_history", "list_all_metric_history_for_tenant"),
+    ("signals", "list_all_signals_for_tenant"),
+    ("usage_records", "list_all_usage_records_for_tenant"),
+    ("transactions", "list_all_metering_records_for_tenant"),
+]
+
+
+def _row_to_dict(obj) -> dict:
+    return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
+
+
+async def _write_table_file(
+    db: AsyncSession, tenant_id: int, table_name: str, list_fn, out_dir, fmt: str,
+) -> None:
+    """Page through a table for one tenant and write it as one JSON/CSV file."""
+    import csv as csv_module
+
+    after_id = None
+    rows: list[dict] = []
+    while True:
+        batch = await list_fn(db, tenant_id, after_id=after_id, limit=config.USER_EXPORT_BATCH_SIZE)
+        if not batch:
+            break
+        rows.extend(_row_to_dict(obj) for obj in batch)
+        after_id = batch[-1].id
+        if len(batch) < config.USER_EXPORT_BATCH_SIZE:
+            break
+
+    if fmt == "csv":
+        path = out_dir / f"{table_name}.csv"
+        if not rows:
+            path.write_text("")
+            return
+        fieldnames = list(rows[0].keys())
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv_module.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({
+                    k: (json.dumps(v, default=str) if isinstance(v, (dict, list)) else v)
+                    for k, v in row.items()
+                })
+    else:
+        path = out_dir / f"{table_name}.json"
+        path.write_text(json.dumps(rows, default=str, indent=2))
+
+
+async def process_export_request_task(db: AsyncSession, task) -> None:
+    """Gather all of a tenant's raw data, zip it, save locally, email it."""
+    import tempfile
+    import zipfile
+    from datetime import timedelta
+    from pathlib import Path
+
+    export = await Store.get_export_by_task_id(db, task.id)
+    if export is None:
+        raise ValueError(f"No user_export row for task {task.id}")
+
+    await Store.mark_export_processing(db, export.id)
+    fmt = task.payload.get("format", "json")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        for table_name, method_name in _USER_EXPORT_TABLES:
+            list_fn = getattr(Store, method_name)
+            await _write_table_file(db, task.tenant_id, table_name, list_fn, tmp_path, fmt)
+
+        zip_name = f"tenant_{task.tenant_id}_export_{export.id}.zip"
+        dest_dir = config.USER_EXPORT_LOCAL_DIR
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        zip_path = dest_dir / zip_name
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in tmp_path.iterdir():
+                zf.write(f, arcname=f.name)
+
+    from .services.email_service import send_email_with_attachment
+
+    sent = await send_email_with_attachment(
+        to_email=export.recipient_email,
+        subject="Your HuMetric data export is ready",
+        html_body=(
+            "<p>Your requested data export is attached as a zip file. "
+            "It will be kept on our servers for "
+            f"{config.USER_EXPORT_RETENTION_DAYS} days and then deleted.</p>"
+        ),
+        attachment_path=zip_path,
+        attachment_filename=zip_name,
+    )
+    if not sent:
+        raise RuntimeError("Failed to send export email")
+
+    expires_at = datetime.now(timezone.utc) + timedelta(days=config.USER_EXPORT_RETENTION_DAYS)
+    await Store.mark_export_completed(
+        db, export.id, str(zip_path.relative_to(dest_dir)), expires_at,
+    )
+    _log.info("Export task %d completed for tenant %d -> %s", task.id, task.tenant_id, zip_name)
+
+
 async def handle_failure(db: AsyncSession, task, exc: Exception) -> None:
     """Decide whether to retry or permanently fail on error."""
 
@@ -305,6 +408,10 @@ async def handle_failure(db: AsyncSession, task, exc: Exception) -> None:
     else:
         _log.error("Task %d permanently failed: %s", task.id, exc)
         await Store.fail_task_permanently(db, task.id, str(exc))
+        if task.task_type == "export_request":
+            export = await Store.get_export_by_task_id(db, task.id)
+            if export:
+                await Store.mark_export_failed(db, export.id, str(exc))
 
 
 async def process_one_task(db: AsyncSession, task) -> None:
@@ -318,6 +425,8 @@ async def process_one_task(db: AsyncSession, task) -> None:
             await process_re_embed_task(db, task)
         elif task.task_type == "lakehouse_export":
             await process_lakehouse_export_task(db, task)
+        elif task.task_type == "export_request":
+            await process_export_request_task(db, task)
         else:
             await Store.fail_task_permanently(db, task.id, f"Unknown task_type: {task.task_type}")
             return
@@ -409,6 +518,38 @@ async def _trial_expiry_scheduler(factory) -> None:
         await asyncio.sleep(config.TRIAL_SWEEP_INTERVAL_S)
 
 
+async def _run_export_cleanup_once(db: AsyncSession) -> int:
+    """Delete expired user-export zip files + tracking rows. Returns count removed."""
+    now = datetime.now(timezone.utc)
+    expired = await Store.list_expired_exports(db, now)
+    for export in expired:
+        if export.file_path:
+            path = config.USER_EXPORT_LOCAL_DIR / export.file_path
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as exc:
+                _log.warning("Could not delete export file %s: %s", path, exc)
+        await Store.delete_export_record(db, export.id)
+    return len(expired)
+
+
+async def _user_export_cleanup_scheduler(factory) -> None:
+    """Delete expired user-export zip files + rows every USER_EXPORT_CLEANUP_INTERVAL_S."""
+    _log.info(
+        "User export cleanup scheduler started (interval=%.0fs, retention=%dd)",
+        config.USER_EXPORT_CLEANUP_INTERVAL_S, config.USER_EXPORT_RETENTION_DAYS,
+    )
+    while _running:
+        try:
+            async with factory() as db:
+                removed = await _run_export_cleanup_once(db)
+                if removed:
+                    _log.info("User export cleanup removed %d expired export(s)", removed)
+        except Exception as exc:
+            _log.exception("User export cleanup scheduler error: %s", exc)
+        await asyncio.sleep(config.USER_EXPORT_CLEANUP_INTERVAL_S)
+
+
 async def main():
     """Worker main loop."""
     _log.info("Worker starting. Poll interval: %.1fs, batch size: %d, max retries: %d",
@@ -429,6 +570,7 @@ async def main():
         _log.info("Nightly export scheduler enabled (hour=%d UTC)", config.EXPORT_HOUR_UTC)
 
     trial_task = asyncio.create_task(_trial_expiry_scheduler(factory))
+    export_cleanup_task = asyncio.create_task(_user_export_cleanup_scheduler(factory))
 
     try:
         while _running:
@@ -451,7 +593,7 @@ async def main():
             if _running:
                 await asyncio.sleep(config.WORKER_POLL_INTERVAL_S)
     finally:
-        for bg_task in (scheduler_task, trial_task):
+        for bg_task in (scheduler_task, trial_task, export_cleanup_task):
             if bg_task is not None:
                 bg_task.cancel()
                 try:

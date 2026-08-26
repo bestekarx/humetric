@@ -476,13 +476,45 @@ class Task(Base):
             name="ck_task_status",
         ),
         CheckConstraint(
-            "task_type IN ('signal_process', 're_embed', 'lakehouse_export')",
+            "task_type IN ('signal_process', 're_embed', 'lakehouse_export', 'export_request')",
             name="ck_task_type",
         ),
         Index("ix_task_tenant", "tenant_id"),
         Index("ix_task_signal", "signal_id"),
         Index("ix_task_status", "status"),
         Index("ix_task_next_retry", "status", "next_retry_at"),
+    )
+
+
+class UserExport(Base):
+    """Tracks a tenant-requested raw data export (CSV/JSON zip, emailed on completion)."""
+    __tablename__ = "user_export"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = _tenant_fk()
+    task_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("task.id", ondelete="SET NULL"), nullable=True
+    )
+    format: Mapped[str] = mapped_column(String(10), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    recipient_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'processing', 'completed', 'failed')",
+            name="ck_user_export_status",
+        ),
+        CheckConstraint("format IN ('csv', 'json')", name="ck_user_export_format"),
+        Index("ix_user_export_tenant", "tenant_id"),
+        Index("ix_user_export_status", "status"),
+        Index("ix_user_export_expires", "expires_at"),
     )
 
 

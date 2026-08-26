@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Literal
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
@@ -766,6 +767,17 @@ class StartTrialResponse(BaseModel):
     trial_ends_at: str | None = None
     trial_days_left: int | None = None
     message: str = "Pro trial started."
+
+
+class ExportRequestBody(BaseModel):
+    format: Literal["csv", "json"]
+
+
+class ExportRequestResponse(BaseModel):
+    export_id: int
+    status: str
+    recipient_email: str
+    message: str
 
 
 class RotateApiKeyResponse(BaseModel):

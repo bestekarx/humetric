@@ -54,6 +54,8 @@ from .schema import (
     EntityMetricsResponse,
     EntityRead,
     ErrorResponse,
+    ExportRequestBody,
+    ExportRequestResponse,
     ExtractedMetric,
     MetricContribution,
     MetricExplanation,
@@ -1808,6 +1810,34 @@ async def tenant_dashboard(
         limits=limits,
         stripe_customer_portal_url=portal_url,
         **trial_info(tenant),
+    ).model_dump()
+
+
+@app.post(f"{V1_PREFIX}/tenant/export", tags=["Tenant"])
+async def request_tenant_export(
+    body: ExportRequestBody,
+    request: Request,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    """Queue a raw data export (CSV/JSON zip of the tenant's data), emailed on completion."""
+    _require_scope(request, "tenant:admin")
+    tenant_id = request.state.tenant_id
+    tenant = await db.get(Tenant, tenant_id)
+    if not tenant:
+        raise HTTPException(status_code=404, detail=error_envelope("tenant_not_found", "Tenant not found").model_dump())
+    if not tenant.email:
+        raise HTTPException(status_code=422, detail=error_envelope("no_email", "Tenant has no email on file").model_dump())
+
+    if await Store.has_pending_export(db, tenant_id):
+        raise HTTPException(status_code=409, detail=error_envelope("export_in_progress", "An export is already in progress").model_dump())
+
+    _task, export = await Store.create_export_request(db, tenant_id, body.format, tenant.email)
+
+    return ExportRequestResponse(
+        export_id=export.id,
+        status=export.status,
+        recipient_email=tenant.email,
+        message=f"Your export will be emailed to {tenant.email} shortly.",
     ).model_dump()
 
 

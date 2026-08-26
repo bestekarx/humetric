@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from pathlib import Path
 
 from ..config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM, HUMETRIC_BASE_URL
 
@@ -30,6 +33,47 @@ async def send_email(to_email: str, subject: str, html_body: str) -> bool:
         return True
     except Exception:
         logger.exception("Failed to send email to %s", to_email)
+        return False
+
+
+async def send_email_with_attachment(
+    to_email: str,
+    subject: str,
+    html_body: str,
+    attachment_path: Path,
+    attachment_filename: str,
+) -> bool:
+    if not SMTP_HOST or SMTP_HOST == "localhost" and SMTP_PORT == 25:
+        logger.info(
+            "SMTP not configured, would send email to %s with attachment %s:\nSubject: %s\n%s",
+            to_email, attachment_filename, subject, html_body,
+        )
+        return True
+    try:
+        msg = MIMEMultipart("mixed")
+        msg["From"] = SMTP_FROM
+        msg["To"] = to_email
+        msg["Subject"] = subject
+
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(html_body, "html"))
+        msg.attach(alt)
+
+        with open(attachment_path, "rb") as f:
+            part = MIMEBase("application", "zip")
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f'attachment; filename="{attachment_filename}"')
+        msg.attach(part)
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            server.starttls()
+            if SMTP_USER:
+                server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_FROM, to_email, msg.as_string())
+        return True
+    except Exception:
+        logger.exception("Failed to send email with attachment to %s", to_email)
         return False
 
 

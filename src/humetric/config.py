@@ -219,6 +219,16 @@ EXPORT_HOUR_UTC = int(os.environ.get("HUMETRIC_EXPORT_HOUR_UTC", "2"))
 EXPORT_SCHEDULER_INTERVAL_S = float(os.environ.get("HUMETRIC_EXPORT_SCHEDULER_INTERVAL_S", "300"))
 
 
+# User-facing data export: a tenant-requested raw CSV/JSON zip, emailed on
+# completion and deleted after USER_EXPORT_RETENTION_DAYS. Deliberately
+# separate from the analytics lakehouse EXPORT_* settings above — different
+# storage location and lifecycle (one-shot + TTL-deleted vs. queried Parquet).
+USER_EXPORT_LOCAL_DIR = Path(os.environ.get("HUMETRIC_USER_EXPORT_LOCAL_DIR", str(ROOT / "user_exports")))
+USER_EXPORT_RETENTION_DAYS = int(os.environ.get("HUMETRIC_USER_EXPORT_RETENTION_DAYS", "7"))
+USER_EXPORT_CLEANUP_INTERVAL_S = float(os.environ.get("HUMETRIC_USER_EXPORT_CLEANUP_INTERVAL_S", "3600"))
+USER_EXPORT_BATCH_SIZE = int(os.environ.get("HUMETRIC_USER_EXPORT_BATCH_SIZE", "1000"))
+
+
 def require_keys() -> None:
     """Check that the required API keys are present; raise if any are missing."""
     missing = [
