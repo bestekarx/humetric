@@ -49,6 +49,10 @@ docs/plans/tanitim-ve-sosyal-medya.md
 docs/plans/video-sistemi-envanter-ve-senaryolar.md
 docs/plans/yildiz-open-innovation-basvuru.md
 docs/plans/yildiz-basvuru-form-cevaplari.md
+docs/plans/yildiz-deck.html
+docs/plans/yildiz-deck-tr.html
+docs/plans/yildiz-deck.pdf
+docs/plans/yildiz-deck-tr.pdf
 docs/plans/youtube-yorum-segmentler/
 docs/plans/youtube-yorum-video-uyum-senaryo.md
 packs/demo-worker-full.yaml
@@ -59,3 +63,22 @@ packs/youtube-yorum.yaml
 # transcripts) — never commit copyrighted source text to this public repo
 postman/*.local.json
 postman/humetric-youtube-*.json
+
+# local dev experiments / bench outputs — not part of the humetric backend,
+# may contain real-looking dealer/customer data from ad-hoc testing
+scripts/output/
+scripts/local_llm_ollama_bench.py
+scripts/viral/
+scripts/e2e_dealer_visit_test.py
+docs/plans/yerel-llm-denemesi.md
+docs/plans/yerel-llm-windows-rtx4050.md
+docs/plans/pack-wizard-metrik-secimi.md
+docs/plans/gentic-influencer-entegrasyonu.md
+docs/plans/ozellik-arastirmasi.md
+docs/plans/viral-icerik-veri-dogrulama.md
+
+# local dev doc duplicate (canonical is LOCAL_RUN.md)
+local-run.md
+
+# tests/ is local-only per CLAUDE.md — not pushed to the public repo
+tests/
