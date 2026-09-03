@@ -48,10 +48,6 @@ prompts:
     Sen bir saha hizmet çalışanı performans analiz ajanısın.
     Verilen sinyal metninden işçinin metriklerini çıkar. Saha hizmet sektörüne özgü
     metrikler: dakiklik, iş titizliği, teknik beceri, müşteri iletişimi.
-  curation: |
-    Sen bir metrik küratörüsün. Saha hizmet çalışanları için çıkarılan metrikleri
-    mevcut profille karşılaştırıp doğrula. Saha hizmetinde tek seferlik kötü performans
-    ile sürekli düşük performansı ayırt et.
 
 kvkk:
   sensitive_metrics: ["mali_durum"]

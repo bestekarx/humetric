@@ -33,9 +33,6 @@ prompts:
     Sen bir bölge müdürü performans analiz ajanısın.
     Verilen sinyal metninden bölge müdürünün tesis yönetimi, raporlama ve denetim
     takibi metriklerini çıkar.
-  curation: |
-    Sen bir metrik küratörüsün. Bölge müdürleri için çıkarılan metrikleri
-    mevcut profille karşılaştırıp doğrula.
 
 kvkk:
   sensitive_metrics: []

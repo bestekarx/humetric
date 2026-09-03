@@ -161,6 +161,7 @@ class EntityMetric(Base):
     input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     prompt_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     schema_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reviewer_override: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     extraction_raw: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -209,6 +210,7 @@ class EntityMetricHistory(Base):
     prev_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     signal_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    context_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_span: Mapped[str | None] = mapped_column(Text, nullable=True)
     recorded_at: Mapped[datetime] = mapped_column(
@@ -276,9 +278,20 @@ class Signal(Base):
             "status IN ('received', 'processing', 'completed', 'failed')",
             name="ck_signal_status",
         ),
+        # Idempotency guard, created by migration 004. It was missing here,
+        # so a schema built with metadata.create_all() (test fixtures) had no
+        # such constraint — which is exactly why the duplicate-external_id
+        # 500 reached production untested. No migration needed: the live DB
+        # already has it.
+        UniqueConstraint(
+            "tenant_id", "external_id", "entity_id", name="uq_signal_idempotency",
+        ),
         Index("ix_signal_entity", "entity_id"),
         Index("ix_signal_tenant", "tenant_id"),
-        Index("ix_signal_external_id", "tenant_id", "external_id"),
+        # Single-column on purpose: migration 004 dropped the composite form
+        # and recreated it on external_id alone. The unique constraint above
+        # already serves (tenant_id, external_id, ...) lookups.
+        Index("ix_signal_external_id", "external_id"),
         Index("ix_signal_occurred", "tenant_id", "occurred_at"),
     )
 
@@ -336,6 +349,33 @@ class MeteringRecord(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "date", name="uq_metering_tenant_date"),
         Index("ix_metering_tenant", "tenant_id"),
+    )
+
+
+class LlmCallRecord(Base):
+    """Per-call LLM token usage, granular by pack/signal/model (Spec 027).
+
+    Complements MeteringRecord, which stays the daily tenant-level total that
+    /v1/tenant/dashboard reads. This table answers "which pack/signal/model
+    burned how many tokens" — a question the daily aggregate can't.
+    """
+    __tablename__ = "llm_call_record"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[int] = _tenant_fk()
+    signal_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    pack_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    pack_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_now
+    )
+
+    __table_args__ = (
+        Index("ix_llm_call_record_tenant_pack", "tenant_id", "pack_key"),
+        Index("ix_llm_call_record_tenant_created", "tenant_id", "created_at"),
     )
 
 

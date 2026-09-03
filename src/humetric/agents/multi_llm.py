@@ -61,6 +61,11 @@ async def _call_openai(
     schema: Type[T],
     base_url: str | None = None,
     tenant_id: int | None = None,
+    call_meta: dict | None = None,
+    signal_id: str | None = None,
+    pack_key: str | None = None,
+    pack_version: int | None = None,
+    provider: str | None = None,
 ) -> T:
     client = _get_openai_client(api_key, base_url)
     user_text = user if isinstance(user, str) else json.dumps(user, ensure_ascii=False)
@@ -86,9 +91,19 @@ async def _call_openai(
     if tenant_id is not None and total_tokens > 0:
         try:
             from ..services.usage_service import record_llm_tokens
-            await record_llm_tokens(tenant_id, total_tokens)
+            await record_llm_tokens(
+                tenant_id, total_tokens,
+                signal_id=signal_id, pack_key=pack_key, pack_version=pack_version,
+                provider=provider, model=model,
+            )
         except Exception:
             _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)
+
+    if call_meta is not None:
+        from .versioning import hash_prompt, hash_schema
+        call_meta["model"] = model
+        call_meta["prompt_hash"] = hash_prompt(system)
+        call_meta["schema_hash"] = hash_schema(schema)
 
     content = resp.choices[0].message.content
     return schema.model_validate_json(content)
@@ -113,6 +128,11 @@ async def _call_google(
     user: str | list,
     schema: Type[T],
     tenant_id: int | None = None,
+    call_meta: dict | None = None,
+    signal_id: str | None = None,
+    pack_key: str | None = None,
+    pack_version: int | None = None,
+    provider: str | None = None,
 ) -> T:
     try:
         import google.generativeai as genai
@@ -151,9 +171,19 @@ async def _call_google(
     if tenant_id is not None and total_tokens > 0:
         try:
             from ..services.usage_service import record_llm_tokens
-            await record_llm_tokens(tenant_id, total_tokens)
+            await record_llm_tokens(
+                tenant_id, total_tokens,
+                signal_id=signal_id, pack_key=pack_key, pack_version=pack_version,
+                provider=provider, model=model,
+            )
         except Exception:
             _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)
+
+    if call_meta is not None:
+        from .versioning import hash_prompt, hash_schema
+        call_meta["prompt_hash"] = hash_prompt(system)
+        call_meta["schema_hash"] = hash_schema(schema)
+        call_meta["model"] = model
 
     return schema.model_validate_json(resp.text)
 
@@ -172,6 +202,9 @@ async def structured_call_multi(
     tool_description: str,
     tenant_id: int | None = None,
     call_meta: dict | None = None,
+    signal_id: str | None = None,
+    pack_key: str | None = None,
+    pack_version: int | None = None,
 ) -> T:
     """Route a structured LLM call to the appropriate provider backend."""
     if not provider or provider == "anthropic":
@@ -186,6 +219,10 @@ async def structured_call_multi(
             api_key=api_key,
             tenant_id=tenant_id,
             call_meta=call_meta,
+            signal_id=signal_id,
+            pack_key=pack_key,
+            pack_version=pack_version,
+            provider=provider,
         )
 
     if not api_key:
@@ -202,6 +239,11 @@ async def structured_call_multi(
             user=user,
             schema=schema,
             tenant_id=tenant_id,
+            call_meta=call_meta,
+            signal_id=signal_id,
+            pack_key=pack_key,
+            pack_version=pack_version,
+            provider=provider,
         )
 
     if provider == "deepseek":
@@ -213,6 +255,11 @@ async def structured_call_multi(
             schema=schema,
             base_url="https://api.deepseek.com/v1",
             tenant_id=tenant_id,
+            call_meta=call_meta,
+            signal_id=signal_id,
+            pack_key=pack_key,
+            pack_version=pack_version,
+            provider=provider,
         )
 
     if provider == "google":
@@ -223,6 +270,11 @@ async def structured_call_multi(
             user=user,
             schema=schema,
             tenant_id=tenant_id,
+            call_meta=call_meta,
+            signal_id=signal_id,
+            pack_key=pack_key,
+            pack_version=pack_version,
+            provider=provider,
         )
 
     raise ValueError(

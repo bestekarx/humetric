@@ -52,13 +52,6 @@ prompts:
     - Bir metrik hakkında kanıt yoksa o metriği ÜRETME (uydurma).
     - reasoning alanına Türkçe, tek cümlelik somut gerekçe yaz.
     - source_span alanına gerekçeyi dayandırdığın metin parçasını birebir kopyala.
-  curation: |
-    Yeni gözlemi tesisin mevcut skor geçmişiyle uzlaştır.
-    - Konaklamada sezonluk dalgalanma normaldir (yüksek sezon doluluğunda şikayet
-      oranı artar); tek bir yoğun dönem yorumunu kalıcı düşüş sayma.
-    - Tek bir olumsuz misafir yorumu ile tekrar eden aynı şikayet farklıdır:
-      geçmiş kayıtlara bak.
-    - Ani ve büyük değişimlerde confidence'ı düşür; tutarlı tekrarlarda yükselt.
 
 kvkk:
   sensitive_metrics: []

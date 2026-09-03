@@ -707,6 +707,27 @@ async def humetric_usage_report(
 
 @server.tool(
     description=(
+        "Per-pack usage: entity/signal counts and LLM token spend broken down by "
+        "Metric Pack. humetric_usage_report gives the daily tenant-wide total; "
+        "this answers 'which pack cost how much'. Rows with kind='system' are "
+        "spend that belongs to no pack (query re-ranking, pack wizard) and carry "
+        "no entity/signal counts — they are included so the token totals "
+        "reconcile with humetric_usage_report."
+    ),
+    annotations=READ_ONLY,
+)
+async def humetric_pack_usage(
+    start_date: Annotated[str, Field(description="Start date (YYYY-MM-DD).")],
+    end_date: Annotated[str, Field(description="End date (YYYY-MM-DD).")],
+) -> str:
+    return _render(await _request(
+        "GET", f"{API_PREFIX}/usage/packs",
+        params={"start_date": start_date, "end_date": end_date},
+    ))
+
+
+@server.tool(
+    description=(
         "Call history: which API key called which MCP tool how many times, "
         "how long it took, how many errored. humetric_usage_report gives daily "
         "volume; this tool gives a per-request breakdown. "

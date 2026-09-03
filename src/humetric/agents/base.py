@@ -133,6 +133,10 @@ async def structured_call(
     api_key: str | None = None,
     tenant_id: int | None = None,
     call_meta: dict | None = None,
+    signal_id: str | None = None,
+    pack_key: str | None = None,
+    pack_version: int | None = None,
+    provider: str | None = None,
 ) -> T:
     import asyncio
 
@@ -168,7 +172,11 @@ async def structured_call(
         try:
             from ..services.usage_service import record_llm_tokens
             if total_tokens > 0:
-                await record_llm_tokens(tenant_id, total_tokens)
+                await record_llm_tokens(
+                    tenant_id, total_tokens,
+                    signal_id=signal_id, pack_key=pack_key, pack_version=pack_version,
+                    provider=provider or "anthropic", model=model,
+                )
         except Exception:
             _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)
 
@@ -263,18 +271,56 @@ async def submit_and_await_batch(
 
 
 async def record_batch_usage(messages, tenant_id: int | None) -> None:
-    """Record token usage for a list of succeeded batch messages."""
+    """Record token usage for a list of succeeded batch messages.
+
+    ``messages`` is either a flat list of Anthropic ``Message`` objects (the
+    daily-total-only path) or a list of ``(message, ctx)`` tuples where
+    ``ctx`` is the batch worker's per-signal context dict — carrying
+    ``pack_key``/``pack_version`` and ``task.signal_id`` — which lets each
+    message's tokens also land in a granular llm_call_record row.
+    """
     if tenant_id is None:
         return
+    from ..services.usage_service import record_llm_tokens
+
     total = 0
-    for msg in messages:
+    granular: list[tuple] = []
+    for item in messages:
+        msg, ctx = item if isinstance(item, tuple) else (item, None)
         usage = getattr(msg, "usage", None)
-        if usage:
-            total += (usage.input_tokens or 0) + (usage.output_tokens or 0)
+        if not usage:
+            continue
+        tokens = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+        total += tokens
+        if ctx is not None and tokens > 0:
+            granular.append((tokens, ctx))
+
     if total <= 0:
         return
     try:
-        from ..services.usage_service import record_llm_tokens
+        # The tenant-level daily total is recorded once for the whole batch
+        # (no signal_id/pack_key passed) so it isn't double counted per row.
         await record_llm_tokens(tenant_id, total)
     except Exception:
         _log.exception("Failed to record batch LLM tokens for tenant %d", tenant_id)
+
+    for tokens, ctx in granular:
+        try:
+            from ..services.usage_service import _insert_llm_call_record
+            from ..db.database import get_sync_engine
+            import asyncio as _asyncio
+            await _asyncio.to_thread(
+                _insert_llm_call_record,
+                get_sync_engine(),
+                tenant_id,
+                signal_id=ctx["task"].signal_id,
+                pack_key=ctx.get("pack_key"),
+                pack_version=ctx.get("pack_version"),
+                provider=ctx.get("llm_provider") or "anthropic",
+                model=ctx.get("extract_meta", {}).get("model"),
+                token_count=tokens,
+            )
+        except Exception:
+            _log.exception(
+                "Failed to record granular batch LLM tokens for tenant %d", tenant_id
+            )

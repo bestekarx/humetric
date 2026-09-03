@@ -54,9 +54,9 @@ WIZARD_MODEL = os.environ.get("HUMETRIC_WIZARD_MODEL", "claude-haiku-4-5-2025100
 OPENAI_AGENT_MODEL = os.environ.get("HUMETRIC_OPENAI_AGENT_MODEL", "gpt-4o-mini")
 OPENAI_RANKER_MODEL = os.environ.get("HUMETRIC_OPENAI_RANKER_MODEL", "gpt-4o")
 OPENAI_WIZARD_MODEL = os.environ.get("HUMETRIC_OPENAI_WIZARD_MODEL", "gpt-4o-mini")
-GOOGLE_AGENT_MODEL = os.environ.get("HUMETRIC_GOOGLE_AGENT_MODEL", "gemini-1.5-flash")
-GOOGLE_RANKER_MODEL = os.environ.get("HUMETRIC_GOOGLE_RANKER_MODEL", "gemini-1.5-pro")
-GOOGLE_WIZARD_MODEL = os.environ.get("HUMETRIC_GOOGLE_WIZARD_MODEL", "gemini-1.5-flash")
+GOOGLE_AGENT_MODEL = os.environ.get("HUMETRIC_GOOGLE_AGENT_MODEL", "gemini-2.5-flash")
+GOOGLE_RANKER_MODEL = os.environ.get("HUMETRIC_GOOGLE_RANKER_MODEL", "gemini-2.5-pro")
+GOOGLE_WIZARD_MODEL = os.environ.get("HUMETRIC_GOOGLE_WIZARD_MODEL", "gemini-2.5-flash")
 DEEPSEEK_AGENT_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_AGENT_MODEL", "deepseek-chat")
 DEEPSEEK_RANKER_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_RANKER_MODEL", "deepseek-chat")
 DEEPSEEK_WIZARD_MODEL = os.environ.get("HUMETRIC_DEEPSEEK_WIZARD_MODEL", "deepseek-chat")
@@ -102,6 +102,26 @@ def get_wizard_model(provider: str) -> str:
     if provider == "deepseek":
         return DEEPSEEK_WIZARD_MODEL
     return WIZARD_MODEL
+
+
+# Reserved pack keys for llm_call_record.pack_key. Some LLM calls are billed to
+# a tenant but cannot be attributed to a real pack: the ranker re-ranks search
+# hits (the query spent the tokens, not a pack) and the wizard generates a pack
+# that does not exist yet. Attributing either to a real pack key would corrupt
+# the "what did pack X cost" answer, but leaving both unattributed means
+# usage_service.record_llm_tokens skips the granular row entirely and
+# /v1/usage/packs can never reconcile with the daily /v1/usage total. These
+# sentinels keep the accounting whole while staying distinguishable in the
+# response (PackUsageOut.kind == "system").
+#
+# The leading "__" cannot collide with a tenant pack key: PackCreate rejects it
+# (see schema.py).
+RANKER_PACK_KEY = "__ranker__"
+WIZARD_PACK_KEY = "__wizard__"
+SYSTEM_PACK_LABELS = {
+    RANKER_PACK_KEY: "Query re-ranking",
+    WIZARD_PACK_KEY: "Pack wizard",
+}
 
 TOP_K = int(os.environ.get("HUMETRIC_TOP_K", "10"))
 RETRIEVE_K = int(os.environ.get("HUMETRIC_RETRIEVE_K", "50"))

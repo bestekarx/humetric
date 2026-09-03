@@ -46,10 +46,5 @@ prompts:
     - Bir metrik hakkında kanıt yoksa o metriği ÜRETME (uydurma).
     - reasoning alanına Türkçe, tek cümlelik somut gerekçe yaz.
     - source_span alanına gerekçeyi dayandırdığın metin parçasını birebir kopyala.
-  curation: |
-    Yeni şikâyeti toptancının geçmişiyle uzlaştır.
-    - Tek bir bayiden gelen tek şikâyet ile farklı bayilerden gelen aynı şikâyet
-      farklıdır; tekrar edende confidence yükselt.
-    - Sezonluk yoğunluk (kampanya dönemi) gecikmeyi açıklayabilir, kalıcı düşüş sayma.
 kvkk:
   sensitive_metrics: []

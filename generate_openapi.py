@@ -37,7 +37,7 @@ def main():
         "Scopes: `signals:write`, `entities:read`, `entities:write`, "
         "`signals:read`, `query`, `packs:read`, `packs:admin`\n\n"
         "## Rate Limiting\n"
-        f"Default: {hm_config.HUMETRIC_RATE_LIMIT} requests/min per API key\n"
+        f"Default: {hm_config.RATE_LIMIT_PER_MINUTE} requests/min per API key\n"
         "Headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After`"
     )
     

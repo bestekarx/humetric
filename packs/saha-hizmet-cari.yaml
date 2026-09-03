@@ -46,12 +46,3 @@ prompts:
     - evidence: metinden doğrudan alıntı veya özet
 
     Kanıt yoksa metrik üretme.
-  curation: |
-    Sen bir metrik küratörüsün. Saha hizmet müşterileri için çıkarılan metrikleri
-    mevcut profille karşılaştırıp doğrula. Tek seferlik olaylarla süregelen
-    davranış kalıplarını ayırt et.
-
-    Onay kriterleri:
-    - Yeni kanıt mevcut profille çelişiyorsa, daha güncel olanı tercih et
-    - Güven skoru 0.4 altındaysa reddet
-    - Tutarsız veya çelişkili kanıt varsa reddet

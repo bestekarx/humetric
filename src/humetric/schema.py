@@ -147,6 +147,7 @@ class EntityMetricRead(BaseModel):
     source_count: int = Field(default=1, validation_alias=AliasChoices("source_count", "sourceCount"))
     last_updated: datetime | None = Field(default=None, validation_alias=AliasChoices("last_updated", "lastUpdated"))
     source_signal_id: str | None = Field(default=None, validation_alias=AliasChoices("source_signal_id", "sourceSignalId"))
+    context_hash: str | None = Field(default=None, validation_alias=AliasChoices("context_hash", "contextHash"))
 
 
 class EntityRead(BaseModel):
@@ -177,6 +178,7 @@ class MetricContribution(BaseModel):
     model: str | None = None
     reasoning: str | None = None
     source_span: str | None = None
+    context_hash: str | None = Field(default=None, validation_alias=AliasChoices("context_hash", "contextHash"))
 
 
 class MetricHistoryPoint(MetricContribution):
@@ -222,6 +224,7 @@ class MetricExplanation(BaseModel):
     extracted: list[ExtractedMetric] = Field(default_factory=list)
     extract_model: str | None = Field(default=None, validation_alias=AliasChoices("extract_model", "extractModel"))
     curator_model: str | None = Field(default=None, validation_alias=AliasChoices("curator_model", "curatorModel"))
+    context_hash: str | None = Field(default=None, validation_alias=AliasChoices("context_hash", "contextHash"))
     contributions: list[MetricContribution] = Field(default_factory=list)
     note: str = (
         "extracted/extract_model alanları yalnızca en son işlenen sinyale aittir; "
@@ -466,10 +469,6 @@ class PackPrompts(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     extraction: str = ""
-    # Curation is now a deterministic confidence-weighted merge (see
-    # agents/curator.py:finalize_merge), not an LLM call — this field is kept
-    # for pack YAML backward-compatibility but is no longer read by the engine.
-    curation: str = ""
 
 
 class PackFieldDef(BaseModel):
@@ -536,6 +535,17 @@ class PackCreate(BaseModel):
         max_length=128,
         validation_alias=AliasChoices("pack_key", "packKey"),
     )
+
+    @field_validator("pack_key")
+    @classmethod
+    def _reject_reserved_prefix(cls, v: str) -> str:
+        # "__" is reserved for the sentinel keys llm_call_record uses for LLM
+        # spend that belongs to no pack (config.SYSTEM_PACK_LABELS). Letting a
+        # tenant publish "__ranker__" would silently merge their pack's usage
+        # into the system row in /v1/usage/packs.
+        if v.startswith("__"):
+            raise ValueError("pack_key may not start with '__' (reserved prefix)")
+        return v
 
 
 class PackRead(BaseModel):
@@ -847,6 +857,36 @@ class CallUsageResponse(BaseModel):
     group_by: str
     records: list[CallUsageOut] = []
     total: CallUsageOut | None = None
+
+
+class PackUsageOut(BaseModel):
+    """One pack's usage summary: how many entities/signals it touched, how
+    many LLM tokens it burned, and the provider:model that did the work —
+    all within the requested date window."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    pack_key: str
+    pack_version: int | None = None
+    entity_count: int = 0
+    signal_count: int = 0
+    llm_token_count: int = 0
+    model: str | None = None
+    # "pack" for a real Metric Pack, "system" for a reserved sentinel key
+    # (config.SYSTEM_PACK_LABELS) covering LLM spend that belongs to no pack —
+    # ranker re-ranks and wizard generations. Both fields default, so adding
+    # them does not break existing clients.
+    kind: str = "pack"
+    label: str | None = None
+
+
+class PackUsageResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    tenant_id: int
+    start_date: str
+    end_date: str
+    packs: list[PackUsageOut] = []
 
 
 class TierLimitExceededResponse(BaseModel):

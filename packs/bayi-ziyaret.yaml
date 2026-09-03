@@ -62,10 +62,5 @@ prompts:
     - Bir metrik hakkında kanıt yoksa o metriği ÜRETME (uydurma).
     - reasoning alanına Türkçe, tek cümlelik somut gerekçe yaz.
     - source_span alanına gerekçeyi dayandırdığın metin parçasını birebir kopyala.
-  curation: |
-    Yeni ziyaret gözlemini bayinin mevcut skor geçmişiyle uzlaştır.
-    - Tek bir kötü ziyaret ile tekrar eden aynı bulgu farklıdır: geçmişe bak.
-    - Sezonluk dalgalanma normaldir (kampanya dönemi, sezon sonu stok erimesi).
-    - Ani ve büyük değişimlerde confidence'ı düşür; tutarlı tekrarlarda yükselt.
 kvkk:
   sensitive_metrics: []

@@ -99,6 +99,7 @@ async def _prepare_task(db: AsyncSession, task) -> dict | None:
         await db.commit()
 
     ctx = entity.free_text or ""
+    context_hash = hash_text(ctx)
     pack_extraction_prompt = (pack_def.get("prompts", {}) or {}).get("extraction")
     pack_metrics = pack_def.get("metrics", []) or []
     sys_prompt, user_prompt = extractor.build_extract_inputs(
@@ -110,7 +111,10 @@ async def _prepare_task(db: AsyncSession, task) -> dict | None:
         "entity": entity,
         "entity_id": entity_id,
         "pack_def": pack_def,
+        "pack_key": signal.pack_key if signal else pack_def.get("key"),
+        "pack_version": signal.pack_version if signal else pack_def.get("version"),
         "ctx": ctx,
+        "context_hash": context_hash,
         "input_hash": input_hash,
         "signal_text": signal_text,
         "occurred_at": resolve_occurred_at(task, signal),
@@ -188,7 +192,7 @@ async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> in
                 c["error"] = f"extraction {err}"
                 continue
             c["extracted"] = base.parse_batch_result(msg, ExtractionResult, "extract_metrics").metrics
-            usage_by_tenant[c["task"].tenant_id].append(msg)
+            usage_by_tenant[c["task"].tenant_id].append((msg, c))
 
     # ── Phase A2: other providers — no native batch endpoint, so fall back
     # to a synchronous per-signal structured_call_multi so the tenant's
@@ -205,6 +209,9 @@ async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> in
                 tool_name="extract_metrics",
                 tool_description="Extract metrics from the signal text",
                 tenant_id=c["task"].tenant_id,
+                signal_id=c["task"].signal_id,
+                pack_key=c["pack_key"],
+                pack_version=c["pack_version"],
             )
             c["extracted"] = result.metrics
         except Exception as exc:
@@ -235,6 +242,7 @@ async def run_batch_once(db: AsyncSession, *, chronological: bool = False) -> in
                 c["pack_def"], c["input_hash"],
                 signal_text=c["signal_text"],
                 occurred_at=c["occurred_at"],
+                context_hash=c["context_hash"],
             )
             await Store.complete_task(db, t.id)
         except Exception as exc:

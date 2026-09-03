@@ -22,6 +22,7 @@ from .db.models import (
     Entity,
     EntityMetric,
     EntityMetricHistory,
+    LlmCallRecord,
     MeteringRecord,
     MetricPack,
     Signal,
@@ -33,6 +34,15 @@ from .db.models import (
 
 # Time buckets the chronological batch claim understands (date_trunc units).
 _BATCH_WINDOW_UNITS = frozenset({"day", "week", "month"})
+
+
+def _day_start(d: date) -> datetime:
+    """Midnight UTC on `d`, for half-open range filters on timestamptz columns.
+
+    Comparing against the raw column keeps the index usable; date(col) would
+    not, and would also be evaluated in the session timezone.
+    """
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
 
 _log = logging.getLogger(__name__)
 
@@ -152,19 +162,44 @@ class Store:
 
         existing = await db.execute(
             select(EntityMetric).where(
+                # RLS already scopes this, but the query must be correct on its
+                # own: two tenants can share an entity_id + metric_key pair, and
+                # without this filter a missing app.tenant_id GUC returns zero
+                # rows, the code inserts, and uq_entity_metric_key blows up.
+                EntityMetric.tenant_id == data["tenant_id"],
                 EntityMetric.entity_id == entity_id,
                 EntityMetric.metric_key == metric_key,
             )
         )
         metric = existing.scalar_one_or_none()
 
-        if metric:
-            for key, value in data.items():
-                if key not in ("id", "entity_id", "metric_key", "created_at"):
-                    setattr(metric, key, value)
-            metric.last_updated = datetime.now(timezone.utc)
-        else:
+        if metric is None:
             metric = EntityMetric(**data)
+        else:
+            new_last_updated = data.get("last_updated") or datetime.now(timezone.utc)
+            if metric.last_updated is not None and new_last_updated < metric.last_updated:
+                # An out-of-order write — a backfilled signal that occurred
+                # before the value currently stored. entity_metric holds the
+                # LATEST value, so the payload is skipped wholesale; guarding
+                # only last_updated (as this did) produced a row whose
+                # timestamp and value came from different signals and
+                # contradicted entity_metric_history.
+                #
+                # Nothing is lost: the history row is written unconditionally
+                # with its own recorded_at (worker._persist_signal_result), so
+                # the older signal still shows up in /explain and /history.
+                # source_count is the exception — it counts contributions,
+                # which is order-independent.
+                if "source_count" in data:
+                    metric.source_count = max(metric.source_count, data["source_count"])
+            else:
+                # `<` above, not `<=`: backfilled occurred_at is often
+                # date-precision, so treating equal timestamps as stale would
+                # freeze the metric after the first signal of each day.
+                for key, value in data.items():
+                    if key not in ("id", "entity_id", "metric_key", "tenant_id", "created_at", "last_updated"):
+                        setattr(metric, key, value)
+                metric.last_updated = new_last_updated
 
         db.add(metric)
         await db.flush()
@@ -445,6 +480,90 @@ class Store:
 
         q = q.order_by(desc(UsageRecord.created_at)).limit(limit).offset(offset)
         return list((await db.execute(q)).scalars().all())
+
+    @staticmethod
+    async def aggregate_llm_calls_by_pack(
+        db: AsyncSession,
+        tenant_id: int,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[dict]:
+        """Token totals per pack over llm_call_record, with the most
+        frequently used pack_version and provider:model label for that pack
+        in the window."""
+        model_label = func.concat(
+            func.coalesce(LlmCallRecord.provider, "unknown"), ":",
+            func.coalesce(LlmCallRecord.model, "unknown"),
+        )
+        q = (
+            select(
+                LlmCallRecord.pack_key.label("pack_key"),
+                # mode(), not max(): max() would report v3 next to v1+v2+v3's
+                # summed tokens if the pack was bumped mid-window. The modal
+                # version is the one that actually spent most of them, and it
+                # matches how the model label below is picked.
+                func.mode().within_group(LlmCallRecord.pack_version).label("pack_version"),
+                func.sum(LlmCallRecord.token_count).label("llm_token_count"),
+                func.mode().within_group(model_label).label("model"),
+            )
+            .where(
+                LlmCallRecord.tenant_id == tenant_id,
+                LlmCallRecord.pack_key.is_not(None),
+                # Half-open range on the raw column rather than date(created_at):
+                # a function call on the column is not sargable and would skip
+                # ix_llm_call_record_tenant_created.
+                LlmCallRecord.created_at >= _day_start(start_date),
+                LlmCallRecord.created_at < _day_start(end_date + timedelta(days=1)),
+            )
+            .group_by(LlmCallRecord.pack_key)
+        )
+        rows = (await db.execute(q)).all()
+        return [
+            {
+                "pack_key": r.pack_key,
+                "pack_version": r.pack_version,
+                "llm_token_count": int(r.llm_token_count or 0),
+                "model": r.model,
+            }
+            for r in rows
+        ]
+
+    @staticmethod
+    async def count_signals_by_pack(
+        db: AsyncSession,
+        tenant_id: int,
+        *,
+        start_date: date,
+        end_date: date,
+    ) -> list[dict]:
+        """Signal + distinct-entity counts per pack over the signal table."""
+        q = (
+            select(
+                Signal.pack_key.label("pack_key"),
+                func.count().label("signal_count"),
+                func.count(func.distinct(Signal.entity_id)).label("entity_count"),
+            )
+            .where(
+                Signal.tenant_id == tenant_id,
+                Signal.pack_key.is_not(None),
+                # Windowed on ingest time (created_at), not occurred_at: this
+                # answers "what did we spend in this period", and a backfill
+                # spends on the day it runs. Same sargable form as above.
+                Signal.created_at >= _day_start(start_date),
+                Signal.created_at < _day_start(end_date + timedelta(days=1)),
+            )
+            .group_by(Signal.pack_key)
+        )
+        rows = (await db.execute(q)).all()
+        return [
+            {
+                "pack_key": r.pack_key,
+                "signal_count": r.signal_count,
+                "entity_count": r.entity_count,
+            }
+            for r in rows
+        ]
 
     # --- ApiKey ---
 
@@ -1057,7 +1176,28 @@ class Store:
                 Signal.created_at > cutoff,
             )
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
+
+    @staticmethod
+    async def find_signal_by_external_id(
+        db: AsyncSession, tenant_id: int, external_id: str, entity_id: str,
+    ) -> Signal | None:
+        """Duplicate lookup with no time window.
+
+        `uq_signal_idempotency` is forever, but check_idempotency() only looks
+        back 24 hours — so a re-post older than that slips past the pre-flight
+        check and hits the constraint as a 500. This is the lookup that turns
+        it into a 409 instead: 24h is the safe replay window, anything older
+        is honestly a conflict.
+        """
+        result = await db.execute(
+            select(Signal).where(
+                Signal.tenant_id == tenant_id,
+                Signal.external_id == external_id,
+                Signal.entity_id == entity_id,
+            )
+        )
+        return result.scalars().first()
 
     # --- Embedding pending (Spec 024) ---
 
@@ -1494,6 +1634,11 @@ def _metric_row_to_read(row: EntityMetric) -> dict:
         "source_count": row.source_count,
         "last_updated": row.last_updated,
         "source_signal_id": row.signal_id,
+        # Third fingerprint alongside prompt_hash/input_hash: the entity
+        # context injected into the user message. Surfaced so a caller can
+        # tell "the value moved because the entity context changed" apart
+        # from model drift (see migration 021, replay.py).
+        "context_hash": row.context_hash,
     }
     d["effective_confidence"] = decayed_confidence(row.confidence, row.last_updated)
     return d

@@ -14,7 +14,7 @@ A Metric Pack defines:
   - sensitive: true if this metric contains sensitive/personal data
   - visible_to: list of API key scopes that can see this metric (empty = everyone)
   - requires_consent_scope: consent scope required before processing sensitive metrics (null for non-sensitive)
-- prompts: extraction and curation system prompts
+- prompts: extraction system prompt
 - kvkk: list of sensitive metric keys
 
 Rules:

@@ -187,6 +187,7 @@ async def _replay_canary(canary: dict, pack_def: dict | None = None) -> dict:
         entity_context = sig.get("entity_context", "")
 
         input_hash = hash_text(signal_text)
+        context_hash = hash_text(entity_context)
 
         extracted, extract_meta = await _run_extraction(
             signal_text, entity_context, pack_prompt, pack_metrics,
@@ -219,6 +220,7 @@ async def _replay_canary(canary: dict, pack_def: dict | None = None) -> dict:
             "signal_id": sig_id,
             "signal_text": signal_text[:200],
             "input_hash": input_hash,
+            "context_hash": context_hash,
             "extract_prompt_hash": extract_meta.get("prompt_hash"),
             "extract_schema_hash": extract_meta.get("schema_hash"),
             "extract_model": extract_meta.get("model"),
@@ -250,7 +252,13 @@ async def _replay_canary(canary: dict, pack_def: dict | None = None) -> dict:
         "pack": canary.get("pack_key"),
         "prompt_hash": prompt_hash_val,
         "schema_hash": schema_hash_val,
-        "model": config.AGENT_MODEL,
+        # Whatever the resolved provider actually answered with — not a
+        # hardcoded default. HuMetric is multi-provider, so pinning
+        # config.AGENT_MODEL here mislabelled every non-Anthropic replay.
+        "model": next(
+            (s["extract_model"] for s in per_signal if s.get("extract_model")),
+            None,
+        ),
         "curator_model": None,  # deterministic merge, no LLM call
         "summary": summary,
         "per_signal": per_signal,
@@ -275,6 +283,32 @@ def _compare_runs(prev_report: dict, current_report: dict) -> dict:
     curr_signals = {s["signal_id"]: s for s in current_report.get("per_signal", [])}
 
     diffs: list[dict] = []
+
+    # Run-level fingerprints first — a diff further down means less once the
+    # human knows whether the prompt/schema itself moved between runs.
+    hash_diffs: list[dict] = []
+    for hash_key in ("prompt_hash", "schema_hash"):
+        prev_val = prev_report.get(hash_key)
+        curr_val = current_report.get(hash_key)
+        if prev_val != curr_val:
+            hash_diffs.append({
+                "hash": hash_key,
+                "previous": prev_val,
+                "current": curr_val,
+            })
+    for sig_id, prev in prev_signals.items():
+        curr = curr_signals.get(sig_id)
+        if not curr:
+            continue
+        prev_ctx = prev.get("context_hash")
+        curr_ctx = curr.get("context_hash")
+        if prev_ctx is not None and curr_ctx is not None and prev_ctx != curr_ctx:
+            hash_diffs.append({
+                "hash": "context_hash",
+                "signal_id": sig_id,
+                "previous": prev_ctx,
+                "current": curr_ctx,
+            })
 
     for sig_id, prev in prev_signals.items():
         curr = curr_signals.get(sig_id)
@@ -328,6 +362,7 @@ def _compare_runs(prev_report: dict, current_report: dict) -> dict:
         "current_run_id": current_report.get("run_id"),
         "total_diffs": len(diffs),
         "diffs": diffs,
+        "hash_diffs": hash_diffs,
     }
 
 
@@ -362,6 +397,11 @@ def _format_compare(compare: dict) -> str:
     lines: list[str] = []
     lines.append(f"Previous:  {compare['previous_run_id']}")
     lines.append(f"Current:   {compare['current_run_id']}")
+    for hd in compare.get("hash_diffs", []):
+        prev_short = (hd["previous"] or "")[:12] + "…" if hd["previous"] else "(yok)"
+        curr_short = (hd["current"] or "")[:12] + "…" if hd["current"] else "(yok)"
+        where = f" ({hd['signal_id']})" if "signal_id" in hd else ""
+        lines.append(f"  {hd['hash']} değişti{where}: {prev_short} → {curr_short}")
     lines.append(f"Total diffs: {compare['total_diffs']}")
     for d in compare["diffs"]:
         t = d.get("type", d.get("current_status", "changed"))
@@ -395,6 +435,18 @@ async def _main(args: argparse.Namespace) -> int:
                 report_path.parent.mkdir(parents=True, exist_ok=True)
             report_path.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
         print(_format_compare(comparison))
+        if args.ci and comparison["total_diffs"] > 0:
+            if comparison.get("hash_diffs"):
+                _log.warning(
+                    "Drift accompanies a hash change (%d) — likely an intentional "
+                    "prompt/context update, not silent model drift.",
+                    len(comparison["hash_diffs"]),
+                )
+            else:
+                _log.warning(
+                    "Drift with NO hash change — prompt/schema/context are byte-identical "
+                    "to the previous run, so this is unexplained model drift."
+                )
         return 0 if comparison["total_diffs"] == 0 else 1
 
     canary = _load_canary(canary_path)

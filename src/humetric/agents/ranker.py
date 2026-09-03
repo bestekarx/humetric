@@ -1,4 +1,8 @@
-"""Entity'leri query'ye gore puanlar ve siralar (Sonnet model)."""
+"""Entity'leri query'ye gore puanlar ve siralar.
+
+Model, tenant'in secili saglayicisina gore calisma zamaninda cozulur
+(config.get_ranker_model) — burada sabit bir model adi yok.
+"""
 
 from __future__ import annotations
 
@@ -57,6 +61,10 @@ En ilgili {min(top_k, len(entities))} entity'yi sirala."""
         tool_name="rank_entities",
         tool_description="Score and rank entities against the query",
         tenant_id=tenant_id,
+        # A re-rank is spent by the query, not by any one pack — see
+        # config.RANKER_PACK_KEY. Pinned here rather than passed by the caller
+        # so no API path can mis-attribute it to a real pack.
+        pack_key=config.RANKER_PACK_KEY,
     )
 
     ranked: list[RankedResult] = []

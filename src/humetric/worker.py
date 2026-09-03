@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import signal
 from datetime import datetime, timezone
 
@@ -23,6 +24,23 @@ _log = logging.getLogger(__name__)
 
 _running = True
 
+# Day-one quarantine for the instruction-injection gap: a verbatim match no
+# longer clears review on its own if the cited span itself reads like an
+# instruction to the model rather than an observation about the entity.
+# Not a full defense (see docs/plans/ozellik-arastirmasi.md #05) — cheap
+# imperative patterns only, applied to the ~1-2 sentence span, not the whole
+# signal, so it stays fast and low-noise.
+_INJECTION_QUARANTINE_PATTERN = re.compile(
+    r"system\s*override"
+    r"|ignore\s+(all\s+|previous\s+|prior\s+)*instructions?"
+    r"|do\s+not\s+flag"
+    r"|no\s+(need\s+for\s+|need\s+)?review"
+    r"|incelemeye\s+gerek\s+yok"
+    r"|(set|give)\s+\S+\s+to\s+1\.0"
+    r"|t(ü|u)m\s+metrikleri.*ver",
+    re.IGNORECASE,
+)
+
 
 def _source_span_verified(source_span: str | None, signal_text: str) -> bool:
     """Whether the model's cited source_span verbatim-matches the signal text.
@@ -31,9 +49,16 @@ def _source_span_verified(source_span: str | None, signal_text: str) -> bool:
     in the model's quote doesn't produce a false negative. A missing span is
     treated as verified — there's nothing to check, and pack extraction
     prompts are free to omit it.
+
+    A verbatim match is necessary but not sufficient: if the cited span
+    itself matches an injection-quarantine pattern, it's treated as
+    unverified even though it's present in the text, so the metric still
+    routes to pending_review instead of writing straight through.
     """
     if not source_span:
         return True
+    if _INJECTION_QUARANTINE_PATTERN.search(source_span):
+        return False
     return " ".join(source_span.split()) in " ".join(signal_text.split())
 
 
@@ -72,6 +97,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         await db.commit()
 
     ctx = entity.free_text or ""
+    context_hash = hash_text(ctx)
     pack_extraction_prompt = (pack_def.get("prompts", {}) or {}).get("extraction")
     pack_metrics = pack_def.get("metrics", []) or []
     extract_meta: dict = {}
@@ -83,6 +109,9 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         api_key=llm_key,
         provider=llm_provider,
         call_meta=extract_meta,
+        signal_id=task.signal_id,
+        pack_key=signal.pack_key if signal else pack_def.get("key"),
+        pack_version=signal.pack_version if signal else pack_def.get("version"),
     )
     existing_metrics = await Store.get_entity_metrics(db, entity_id, task.tenant_id)
 
@@ -98,6 +127,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
         extract_meta, curator_meta, existing_metrics, pack_def, input_hash,
         signal_text=signal_text,
         occurred_at=resolve_occurred_at(task, signal),
+        context_hash=context_hash,
     )
 
 
@@ -131,6 +161,7 @@ async def _persist_signal_result(
     input_hash: str,
     signal_text: str = "",
     occurred_at: datetime | None = None,
+    context_hash: str | None = None,
 ) -> None:
     """Write final metrics (KVKK-gated), re-embed the entity, and mark the
     signal completed. Shared by the real-time worker and the batch worker."""
@@ -176,6 +207,7 @@ async def _persist_signal_result(
             "extracted": extracted_entries,
             "extract_prompt_hash": extract_meta.get("prompt_hash"),
             "extract_schema_hash": extract_meta.get("schema_hash"),
+            "context_hash": context_hash,
             "extract_model": extract_meta.get("model"),
             "curator_prompt_hash": curator_meta.get("prompt_hash"),
             "curator_schema_hash": curator_meta.get("schema_hash"),
@@ -193,6 +225,7 @@ async def _persist_signal_result(
             "prev_value": prior.value if prior else None,
             "signal_id": task.signal_id,
             "model": extract_meta.get("model"),
+            "context_hash": context_hash,
             "reasoning": first_extracted.get("reasoning") or None,
             "source_span": first_extracted.get("source_span") or None,
             "recorded_at": recorded_at,
@@ -205,10 +238,12 @@ async def _persist_signal_result(
             "confidence": fm.confidence,
             "source_count": source_count,
             "signal_id": task.signal_id,
+            "last_updated": recorded_at,
             "trace_data": trace,
             "input_hash": input_hash,
             "prompt_hash": extract_meta.get("prompt_hash"),
             "schema_hash": extract_meta.get("schema_hash"),
+            "context_hash": context_hash,
             "model": extract_meta.get("model"),
             "extraction_raw": {"extracted": extracted_entries},
             "review_status": "pending_review" if (fm.needs_review or not span_verified) else None,

@@ -20,6 +20,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 import bcrypt as _bcrypt
 from prometheus_client import make_asgi_app
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config, kvkk
@@ -65,6 +66,8 @@ from .schema import (
     PackDefinition,
     PackDetail,
     PackRead,
+    PackUsageOut,
+    PackUsageResponse,
     PackWizardRequest,
     QueryRequest,
     QueryResponse,
@@ -558,6 +561,9 @@ async def explain_metric(
         extracted=[ExtractedMetric(**e) for e in extracted_raw],
         extract_model=trace_data.get("extract_model"),
         curator_model=trace_data.get("curator_model"),
+        # The column is authoritative; trace_data is the fallback for rows
+        # written before migration 021 added it.
+        context_hash=metric.context_hash or trace_data.get("context_hash"),
         contributions=[
             _history_row_to_contribution(row)
             for row in await Store.list_metric_contributions(
@@ -579,6 +585,7 @@ def _history_row_to_contribution(row) -> MetricContribution:
         model=row.model,
         reasoning=row.reasoning,
         source_span=row.source_span,
+        context_hash=row.context_hash,
     )
 
 
@@ -739,6 +746,13 @@ async def list_entity_signals(
     status_code=202,
     responses={
         401: {"model": ErrorResponse, "description": "Invalid or missing API key"},
+        409: {
+            "model": ErrorResponse,
+            "description": (
+                "external_id already used for this entity. A repeated "
+                "Idempotency-Key inside the 24h window replays with 200 instead."
+            ),
+        },
     },
 )
 async def create_signal(
@@ -764,8 +778,25 @@ async def create_signal(
 
     await Store.check_entity_type_writable(db, tenant_id, body.entity_type)
 
-    # Idempotency-Key check
+    # Duplicate handling. Whichever of the two the caller supplied ends up in
+    # signal.external_id, and uq_signal_idempotency covers
+    # (tenant_id, external_id, entity_id) — so both need checking. The two
+    # carry different intent, so they get different answers:
+    #
+    #   Idempotency-Key  = "I may retry this exact request." A hit inside the
+    #                      24h window replays the prior result (200). Older
+    #                      than that is past the safe-replay window and is
+    #                      reported as a conflict rather than replayed.
+    #   body.external_id = "this id is unique in my system." Any hit is a
+    #                      conflict (409) — never a silent replay, because the
+    #                      caller is asserting uniqueness, not retrying.
+    #
+    # Before this, the pre-flight check ran only when the header was present,
+    # so a bare external_id duplicate fell through to the constraint as an
+    # uncaught IntegrityError — HTTP 500 instead of 409.
     idempotency_key = request.headers.get("Idempotency-Key", "").strip()
+    external_id = (idempotency_key or body.external_id or "").strip()
+
     if idempotency_key:
         existing = await Store.check_idempotency(db, tenant_id, idempotency_key, body.entity_id)
         if existing:
@@ -782,23 +813,52 @@ async def create_signal(
                 },
             )
 
+    if external_id:
+        duplicate = await Store.find_signal_by_external_id(
+            db, tenant_id, external_id, body.entity_id,
+        )
+        if duplicate:
+            raise HTTPException(
+                status_code=409,
+                detail=error_envelope(
+                    "duplicate_external_id",
+                    f"external_id already used for this entity: {external_id}",
+                ).model_dump(),
+            )
+
     pack = await Store.get_active_pack_for_type(db, tenant_id, body.entity_type)
     pack_key = pack.pack_key if pack else None
     pack_version = pack.version if pack else None
 
     signal_id = str(uuid.uuid4())
-    await Store.create_signal(db, {
-        "id": signal_id,
-        "tenant_id": tenant_id,
-        "entity_id": body.entity_id,
-        "entity_type": body.entity_type,
-        "text": body.text or "",
-        "structured": body.structured or {},
-        "external_id": idempotency_key or body.external_id,
-        "pack_key": pack_key,
-        "pack_version": pack_version,
-        "occurred_at": body.occurred_at,
-    })
+    try:
+        await Store.create_signal(db, {
+            "id": signal_id,
+            "tenant_id": tenant_id,
+            "entity_id": body.entity_id,
+            "entity_type": body.entity_type,
+            "text": body.text or "",
+            "structured": body.structured or {},
+            "external_id": external_id or None,
+            "pack_key": pack_key,
+            "pack_version": pack_version,
+            "occurred_at": body.occurred_at,
+        })
+    except IntegrityError as exc:
+        # The pre-flight check above is check-then-act: two concurrent posts
+        # with the same external_id both pass it and one loses the race here.
+        # create_signal() commits, so the session must be rolled back before
+        # anything else touches it (otherwise: PendingRollbackError).
+        await db.rollback()
+        if "uq_signal_idempotency" not in str(getattr(exc, "orig", exc)):
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail=error_envelope(
+                "duplicate_external_id",
+                f"external_id already used for this entity: {external_id}",
+            ).model_dump(),
+        )
 
     await Store.create_task(db, {
         "tenant_id": tenant_id,
@@ -2083,6 +2143,80 @@ async def _build_call_report(
         group_by=group_by,
         records=records,
         total=total,
+    ).model_dump()
+
+
+@app.get(
+    f"{V1_PREFIX}/usage/packs",
+    tags=["Usage"],
+    response_model=PackUsageResponse,
+)
+async def tenant_usage_packs(
+    start_date: str,
+    end_date: str,
+    request: Request,
+    db: AsyncSession = Depends(_get_tenant_session),
+):
+    """Per-pack usage: entity/signal counts and LLM token spend, by pack.
+
+    Complements /v1/usage (daily tenant-wide totals) with the pack dimension
+    a tenant needs to answer "which pack cost how much".
+
+    Rows with `kind: "system"` are LLM spend that belongs to no pack — query
+    re-ranking and pack-wizard generations. They carry no entity/signal counts
+    but are included so the token totals reconcile with /v1/usage.
+    """
+    _require_scope(request, "tenant:admin")
+    return await _build_pack_usage_report(
+        db, request.state.tenant_id, start_date, end_date,
+    )
+
+
+async def _build_pack_usage_report(
+    db: AsyncSession, tenant_id: int, start_date_str: str, end_date_str: str,
+) -> dict:
+    start_date = date.fromisoformat(start_date_str)
+    end_date = date.fromisoformat(end_date_str)
+
+    signal_rows = await Store.count_signals_by_pack(
+        db, tenant_id, start_date=start_date, end_date=end_date,
+    )
+    llm_rows = await Store.aggregate_llm_calls_by_pack(
+        db, tenant_id, start_date=start_date, end_date=end_date,
+    )
+    llm_by_key = {r["pack_key"]: r for r in llm_rows}
+
+    packs: dict[str, PackUsageOut] = {}
+    for s in signal_rows:
+        key = s["pack_key"]
+        llm = llm_by_key.get(key, {})
+        packs[key] = PackUsageOut(
+            pack_key=key,
+            pack_version=llm.get("pack_version"),
+            entity_count=s["entity_count"],
+            signal_count=s["signal_count"],
+            llm_token_count=llm.get("llm_token_count", 0),
+            model=llm.get("model"),
+            kind="system" if key in config.SYSTEM_PACK_LABELS else "pack",
+            label=config.SYSTEM_PACK_LABELS.get(key),
+        )
+    # A pack may have LLM spend recorded (e.g. a batch backfill) without a
+    # matching signal row in this window, or vice versa — union both sides.
+    # The sentinel keys always land here: they never have signal rows.
+    for key, llm in llm_by_key.items():
+        if key not in packs:
+            packs[key] = PackUsageOut(
+                pack_key=key,
+                pack_version=llm.get("pack_version"),
+                llm_token_count=llm.get("llm_token_count", 0),
+                model=llm.get("model"),
+                kind="system" if key in config.SYSTEM_PACK_LABELS else "pack",
+                label=config.SYSTEM_PACK_LABELS.get(key),
+            )
+
+    return PackUsageResponse(
+        tenant_id=tenant_id, start_date=start_date_str, end_date=end_date_str,
+        packs=list(packs.values()),
     ).model_dump()
 
 

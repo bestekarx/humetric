@@ -46,8 +46,10 @@ def build_extract_inputs(
                 "counterpart in the signal:\n" + "\n".join(lines) + "\n"
             )
 
+    if allowed_block:
+        system = system + "\n" + allowed_block
+
     user = f"""Entity: {entity_context if entity_context else "Unknown"}
-{allowed_block}
 <signal_text>
 {signal_text}
 </signal_text>
@@ -77,6 +79,9 @@ async def extract_metrics(
     api_key: str | None = None,
     provider: str | None = None,
     call_meta: dict | None = None,
+    signal_id: str | None = None,
+    pack_key: str | None = None,
+    pack_version: int | None = None,
 ) -> list[ExtractedMetric]:
     system, user = build_extract_inputs(signal_text, entity_context, pack_prompt, pack_metrics)
     resolved_provider = provider or "anthropic"
@@ -92,5 +97,8 @@ async def extract_metrics(
         tool_description="Extract metrics from the signal text",
         tenant_id=tenant_id,
         call_meta=call_meta,
+        signal_id=signal_id,
+        pack_key=pack_key,
+        pack_version=pack_version,
     )
     return result.metrics

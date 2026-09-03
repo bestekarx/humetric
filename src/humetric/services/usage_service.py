@@ -15,7 +15,7 @@ from ..config import (
     FREE_TIER_SIGNAL_LIMIT,
 )
 from ..db.database import get_sync_engine
-from ..db.models import MeteringRecord, Tenant
+from ..db.models import LlmCallRecord, MeteringRecord, Tenant
 
 logger = logging.getLogger("humetric.usage")
 
@@ -62,8 +62,58 @@ async def record_signal(tenant_id: int) -> None:
     await _upsert_usage_async(tenant_id, date.today(), signal_count=1)
 
 
-async def record_llm_tokens(tenant_id: int, count: int) -> None:
+def _insert_llm_call_record(
+    sync_engine,
+    tenant_id: int,
+    *,
+    signal_id: str | None,
+    pack_key: str | None,
+    pack_version: int | None,
+    provider: str | None,
+    model: str | None,
+    token_count: int,
+) -> None:
+    with sync_engine.begin() as conn:
+        conn.execute(
+            LlmCallRecord.__table__.insert().values(
+                tenant_id=tenant_id,
+                signal_id=signal_id,
+                pack_key=pack_key,
+                pack_version=pack_version,
+                provider=provider,
+                model=model,
+                token_count=token_count,
+            )
+        )
+
+
+async def record_llm_tokens(
+    tenant_id: int,
+    count: int,
+    *,
+    signal_id: str | None = None,
+    pack_key: str | None = None,
+    pack_version: int | None = None,
+    provider: str | None = None,
+    model: str | None = None,
+) -> None:
+    """Record LLM token usage: always the daily tenant total, plus a granular
+    llm_call_record row whenever the call is attributable to a signal or pack
+    (i.e. a real pipeline call, not some other token-spending path)."""
     await _upsert_usage_async(tenant_id, date.today(), llm_token_count=count)
+    if signal_id or pack_key:
+        engine = get_sync_engine()
+        await asyncio.to_thread(
+            _insert_llm_call_record,
+            engine,
+            tenant_id,
+            signal_id=signal_id,
+            pack_key=pack_key,
+            pack_version=pack_version,
+            provider=provider,
+            model=model,
+            token_count=count,
+        )
 
 
 async def record_embedding(tenant_id: int) -> None:

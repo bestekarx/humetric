@@ -1,6 +1,7 @@
 """AI Pack Wizard — generates Metric Pack YAML from free-text domain description (Spec 023).
 
-Haiku model ile calisir; cikti PackDefinition schema'sina uygun olmali.
+Model, tenant'in secili saglayicisina gore calisma zamaninda cozulur
+(config.get_wizard_model); cikti PackDefinition schema'sina uygun olmali.
 """
 
 from __future__ import annotations
@@ -49,6 +50,10 @@ async def generate_pack_yaml(
             tool_description="Generate a complete Metric Pack YAML definition from the domain description",
             tenant_id=tenant_id,
             api_key=api_key,
+            # The pack being generated has no key yet — see
+            # config.WIZARD_PACK_KEY for why this is a sentinel and not a
+            # real pack key.
+            pack_key=config.WIZARD_PACK_KEY,
         )
 
         yaml_text = _pack_definition_to_yaml(result)
@@ -116,7 +121,6 @@ def _pack_definition_to_yaml(pack: PackDefinition) -> str:
         "metrics": metrics,
         "prompts": {
             "extraction": pack.prompts.extraction,
-            "curation": pack.prompts.curation,
         },
         "kvkk": {
             "sensitive_metrics": pack.kvkk.sensitive_metrics,
