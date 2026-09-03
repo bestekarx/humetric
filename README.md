@@ -23,7 +23,7 @@
 You have entities (workers, dealers, customers, regions, vehicles...) and you receive signals about them — free text observations, structured reports, chat transcripts. HuMetric extracts measurable metrics from every signal, validates them against historical data, and builds a decaying, confidence-weighted profile for each entity.
 
 ```
-Raw Signal → Extractor Agent (Haiku) → Curator Agent (Sonnet) → Stored Metrics → Hybrid Search + Ranking
+Raw Signal → Extractor Agent → Curator (deterministic merge) → Stored Metrics → Hybrid Search + Ranking
      │                │                        │
      │         Extract metrics           Validate & merge
      │         (value, confidence)       (context-aware)
@@ -45,8 +45,8 @@ Raw Signal → Extractor Agent (Haiku) → Curator Agent (Sonnet) → Stored Met
 3. **Send signals** — any observation about an entity. Signals enter an async task queue.
 
 4. **Background processing:**
-   - **Extractor Agent** (Claude Haiku) reads the signal text and extracts structured metrics (key, value, confidence, reasoning)
-   - **Curator Agent** (Claude Sonnet) compares against existing metrics, decides to accept/merge/reject, and computes a weighted final value
+   - **Extractor Agent** reads the signal text and extracts structured metrics (key, value, confidence, reasoning)
+   - **Curator** compares against existing metrics, decides to accept/merge/reject, and computes a confidence-weighted final value
    - **Temporal decay** is applied — older signals lose weight over time
    - The entity is re-embedded for vector search
 
@@ -56,12 +56,17 @@ Raw Signal → Extractor Agent (Haiku) → Curator Agent (Sonnet) → Stored Met
 
 Each agent handles a single, testable unit of work:
 
-| Agent | Model | Responsibility |
-|-------|-------|----------------|
-| **Extractor** | Claude Haiku | Parse free text → structured metric tuples (key, value, confidence) |
-| **Curator** | Claude Sonnet | Validate extractions against historical data, merge with existing profile |
-| **Ranker** | Claude Sonnet | Re-rank hybrid search results based on query intent |
-| **Wizard** | Claude Haiku | Generate Metric Pack YAML from natural language description |
+| Agent | Responsibility |
+|-------|----------------|
+| **Extractor** | Parse free text → structured metric tuples (key, value, confidence) |
+| **Curator** | Validate extractions against historical data, merge with existing profile |
+| **Ranker** | Re-rank hybrid search results based on query intent |
+| **Wizard** | Generate Metric Pack YAML from natural language description |
+
+HuMetric is multi-provider (Anthropic, OpenAI, Google, DeepSeek) via BYOK. Each
+agent's model is resolved at runtime from the tenant's configured provider
+(`config.get_extractor_model()` and friends), so no model is hardcoded here —
+bring your own key and the same pipeline runs on whichever provider you pick.
 
 All prompts are externalized as Markdown files in `prompts/` and can be overridden per pack.
 
@@ -213,7 +218,7 @@ curl -X POST "$BASE/query" \
 | Database | PostgreSQL 16 + pgvector |
 | ORM | SQLAlchemy 2.0 (async) |
 | Auth | Bearer API key (SHA-256 hashed) |
-| LLM | Anthropic Claude (Haiku + Sonnet) |
+| LLM | Multi-provider via BYOK: Anthropic, OpenAI, Google, DeepSeek |
 | Embedding | Voyage AI / OpenAI / Cohere (abstracted) |
 | Queue | PostgreSQL (SELECT FOR UPDATE SKIP LOCKED) |
 | Observability | Prometheus metrics, JSONL telemetry |

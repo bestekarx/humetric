@@ -115,14 +115,14 @@ pytest tests/test_api.py -v   # single file, verbose
 
 ## Agent architecture
 
-| Agent | Model | Signature |
-|-------|-------|-----------|
-| `extractor.extract_metrics()` | claude-haiku-4-5 | `(signal_text, pack, tenant_id) → list[ExtractedMetric]` |
-| `curator.curate_metrics()` | claude-sonnet-4-6 | `(extracted, history, pack, tenant_id) → list[CuratedMetric]` |
-| `ranker.rerank()` | claude-sonnet-4-6 | `(query, candidates, tenant_id) → list[RankedResult]` |
-| `wizard.generate_pack()` | claude-haiku-4-5 | `(description, tenant_id) → MetricPack YAML` |
+| Agent | Signature |
+|-------|-----------|
+| `extractor.extract_metrics()` | `(signal_text, pack, tenant_id) → list[ExtractedMetric]` |
+| `curator.curate_metrics()` | `(extracted, history, pack, tenant_id) → list[CuratedMetric]` |
+| `ranker.rerank()` | `(query, candidates, tenant_id) → list[RankedResult]` |
+| `wizard.generate_pack()` | `(description, tenant_id) → MetricPack YAML` |
 
-All agents call `agents/base.py:structured_call()` which wraps the Anthropic SDK, handles retries (`LLM_MAX_RETRIES`), and records token usage via `usage_service`.
+HuMetric is multi-provider (Anthropic, OpenAI, Google, DeepSeek) via BYOK — never hardcode a specific model name in docs, prompts, or code comments. The active provider and its per-agent model are resolved at runtime (`config.get_extractor_model()` and friends) from the tenant's configured provider, defaulting to `anthropic` when unset. All agents call `agents/multi_llm.py:structured_call_multi()`, which dispatches to the resolved provider's SDK, handles retries (`LLM_MAX_RETRIES`), and records token usage via `usage_service`.
 
 Prompts are externalized in `prompts/*.md` and loaded at import time via `agents/__init__.py`. To override a prompt for a specific pack, set the `prompts.extraction` key in the Pack YAML.
 

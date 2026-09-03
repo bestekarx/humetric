@@ -46,6 +46,36 @@ Create API keys via `POST /v1/api-keys`.
 | GET | `/v1/tenant/keys` | Get BYO-key status |
 | PUT | `/v1/tenant/keys` | Update BYO-keys |
 | DELETE | `/v1/tenant/keys` | Remove BYO-keys |
+| GET | `/v1/usage` | Daily usage totals over a date range |
+| GET | `/v1/usage/calls` | Per-request call history (by tool, key, client, …) |
+| GET | `/v1/usage/packs` | Usage broken down by Metric Pack |
+
+### Usage reporting
+
+`/v1/usage` answers "what did we spend per day"; `/v1/usage/packs` answers
+"which pack cost how much". Both require the `tenant:admin` scope and take
+`start_date` / `end_date` (`YYYY-MM-DD`, both inclusive).
+
+Some LLM spend belongs to no pack — query re-ranking and pack-wizard
+generations. Those appear in `/v1/usage/packs` as rows with `kind: "system"`
+and a human-readable `label`, carrying token counts but no entity/signal
+counts. They are included so the pack breakdown reconciles with the daily
+total: summing `llm_token_count` across all rows for a window equals the
+`/v1/usage` total for that window.
+
+```json
+{
+  "packs": [
+    {"pack_key": "tcmb-ppk", "kind": "pack", "signal_count": 28,
+     "entity_count": 14, "llm_token_count": 91240, "model": "deepseek:deepseek-chat"},
+    {"pack_key": "__wizard__", "kind": "system", "label": "Pack wizard",
+     "signal_count": 0, "entity_count": 0, "llm_token_count": 6110}
+  ]
+}
+```
+
+Pack keys beginning with `__` are reserved for these system rows and are
+rejected by `POST /v1/packs`.
 
 ## Error Format
 
