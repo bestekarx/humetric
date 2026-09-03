@@ -12,7 +12,7 @@ HuMetric is a Python/FastAPI open-source entity intelligence platform. It ingest
 | Framework | FastAPI (async) + Uvicorn |
 | Database | PostgreSQL 15 + pgvector + Row-Level Security |
 | ORM | SQLAlchemy 2.0 async + asyncpg |
-| LLM | Anthropic Claude (Haiku for extraction/wizard, Sonnet for curation/ranking) |
+| LLM | Multi-provider via BYOK (Anthropic, OpenAI, Google, DeepSeek). Per-agent models resolve at runtime from `config.py` — never hardcode a model name. |
 | Embeddings | Voyage AI / OpenAI / Cohere (abstracted, switchable) |
 | Queue | PostgreSQL (`SELECT FOR UPDATE SKIP LOCKED`) |
 | Auth | Bearer API key, SHA-256 hashed |
@@ -60,6 +60,10 @@ tests/                 — pytest suite (gitignored — local dev only)
 
 ## Conventions agents must follow
 
+**The full rulebook is [`.claude/rules/STANDARDS.md`](.claude/rules/STANDARDS.md)** — categorised,
+numbered, and greppable, with the exemption list that says what *not* to flag. The essentials are
+repeated below; the rulebook wins on any disagreement.
+
 ### Async-first
 All database calls, agent calls, and I/O are `async`. Never introduce synchronous blocking calls (`requests.get`, synchronous SQLAlchemy sessions) into async code paths.
 
@@ -70,7 +74,7 @@ Use `model_config = ConfigDict(...)`, `@model_validator(mode="after")`, `@field_
 Use `select()`, `await session.execute(...)`, `await session.scalar(...)`. Never use `session.query()` — it is the legacy ORM v1 API and is incompatible with the async engine.
 
 ### RLS trust
-Never filter by `tenant_id` manually in application queries. PostgreSQL RLS enforces isolation automatically once `set_config('app.tenant_id', ...)` is called per session. Use `get_tenant_db()` for all runtime queries.
+Use the tenant-scoped session for every runtime query — `Depends(_get_tenant_session)` in `api.py`, `get_tenant_db()` elsewhere. PostgreSQL RLS enforces isolation once `set_config('app.tenant_id', ...)` runs for the session, and fails closed when it does not. An explicit `.where(X.tenant_id == tenant_id)` on top of RLS is intentional defence-in-depth — keep it. Every new tenant-scoped table needs its RLS policy in the same migration.
 
 ### Type annotations
 All function signatures must be annotated. Use `from __future__ import annotations` at the top of every file. Use `X | Y` union syntax (Python 3.10+), not `Optional[X]` or `Union[X, Y]`.
@@ -98,17 +102,24 @@ When adding a new feature, follow this order:
 3. Add data-access methods to `store.py`.
 4. Create Alembic migration if new DB columns or tables are needed.
 5. Add tests in `tests/`.
-6. Update `CLAUDE.md` if architecture decisions change.
+6. Update `CLAUDE.md` if architecture decisions change, and `.claude/rules/STANDARDS.md` if a new recurring risk needs a rule.
 
 ## Files agents must not modify
 
 - `alembic/env.py` — Alembic environment config (change only if migration setup changes)
 - `.env` — local secrets (never commit)
 - `deploy/terraform/terraform.tfvars.example` — update only when adding new variables to `variables.tf`
+- `.claude/settings.local.json` — local, untracked permission state
 
 ## Known constraints
 
 - **Tests require Docker.** All tests fail with connection errors if PostgreSQL+pgvector is not running. This is expected in environments without Docker. The `tests/` directory is gitignored — tests exist locally but are not published.
 - **`EMBED_DIM` is fixed at runtime.** Changing the embedding provider may require a migration to resize the pgvector column. Do not change `EMBED_DIM` without a migration.
-- **Anthropic model pinning.** Agent model names are read from `config.py`. Do not hardcode model strings in agent files.
-- **BYO keys are encrypted.** Tenant-supplied Anthropic/Voyage API keys are stored AES-256-GCM encrypted. Access them only through the `agents/base.py` key-resolution path, never directly from the `Tenant` ORM model.
+- **Model names are configuration, not code.** Every agent resolves its model at runtime through `config.get_*_model()`. A model string anywhere outside `config.py` is a blocking review finding (`HM-ARCH-01`) — this includes docs, prompts, and comments.
+- **BYO keys are encrypted.** Tenant-supplied provider keys are stored AES-256-GCM encrypted. Access them only through the key-resolution path, never directly from the `Tenant` ORM model.
+
+## Before you commit
+
+Run `/pre-commit` in Claude Code — quality gates, migration safety, and a review against the
+rulebook — then `/commit`. Outside Claude Code, run the gates by hand:
+`.venv/bin/ruff check src/` and `.venv/bin/pytest -x -q --timeout=30`.

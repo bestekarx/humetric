@@ -91,7 +91,7 @@ Swagger: `http://localhost:8002/docs`
 
 ## Running tests
 
-Tests require a live PostgreSQL+pgvector instance. The Docker Compose stack provides one on port 5434.
+Tests require a live PostgreSQL+pgvector instance. The Docker Compose stack provides one on port **5434**; the Docker-free Homebrew setup in `LOCAL_RUN.md` uses **5433**. Both are valid — check which one your `.env` points at.
 
 ```bash
 pytest                        # all tests
@@ -101,17 +101,30 @@ pytest tests/test_api.py -v   # single file, verbose
 
 **Note:** `tests/` is gitignored in this repository. Contributors should write tests locally; they are not pushed to the public repo. CI runs against a pgvector container defined in `.github/workflows/ci.yml`.
 
-## Python conventions
+## Quality gates
 
-- **Python 3.11+** throughout. Use `from __future__ import annotations` at the top of every module.
-- **Async by default.** All database access, agent calls, and HTTP handlers are `async`. Never mix synchronous blocking calls into async code paths.
-- **Pydantic v2.** Use `model_config = ConfigDict(...)`, `@model_validator(mode="after")`, `@field_validator`. Do not use v1 patterns (`class Config`, `@validator`, `@root_validator`).
-- **SQLAlchemy 2.0.** Use `select()`, `await session.execute(...)`, `await session.scalar(...)`. The legacy `session.query()` API is incompatible with the async engine.
-- **Type annotations** on all function signatures. Use `X | Y` union syntax (not `Optional[X]` or `Union[X, Y]`).
-- **Imports:** standard library → third-party → local (one blank line between groups). Absolute imports only within `humetric`.
-- **Logging:** `_log = logging.getLogger(__name__)` per module. Use structured log messages. Never use `print()` in production code.
-- **Exception handling:** always catch specific types. Use `except Exception as exc:` only for broad catch-all paths, and always log `exc`.
-- **Configuration:** all tunables go through `src/humetric/config.py` reading from environment variables. Never hardcode secrets, hostnames, or model names.
+Run these before committing — they are exactly what `.github/workflows/ci.yml` runs:
+
+```bash
+.venv/bin/ruff check src/                          # ruff is NOT on PATH — use the venv path
+python -m py_compile <changed .py files>
+.venv/bin/pytest -x -q --tb=short --timeout=30     # needs a live database
+alembic upgrade head && alembic downgrade -1 && alembic upgrade head
+```
+
+`/pre-commit` runs these for you and reviews the diff on top of them.
+
+## Coding standards
+
+**The rulebook is [`.claude/rules/STANDARDS.md`](.claude/rules/STANDARDS.md)** — rule bodies live
+there and are deliberately not duplicated here. It covers security and tenant isolation (`HM-SEC-*`,
+`HM-DATA-*`), architectural boundaries (`HM-ARCH-*`), conventions (`HM-CONV-*`), process
+(`HM-PROC-*`), the reasoning checklist (`HM-REAS-*`), plus common pitfalls, the exemption list, and
+the technical debt that must **not** be flagged on unrelated commits.
+
+The short version: Python 3.11+, `from __future__ import annotations`, async everywhere, Pydantic
+v2 and SQLAlchemy 2.0 idioms only, `X | Y` unions, `logging` not `print`, and never a hardcoded
+model name outside `config.py`.
 
 ## Agent architecture
 
@@ -122,7 +135,7 @@ pytest tests/test_api.py -v   # single file, verbose
 | `ranker.rerank()` | `(query, candidates, tenant_id) → list[RankedResult]` |
 | `wizard.generate_pack()` | `(description, tenant_id) → MetricPack YAML` |
 
-HuMetric is multi-provider (Anthropic, OpenAI, Google, DeepSeek) via BYOK — never hardcode a specific model name in docs, prompts, or code comments. The active provider and its per-agent model are resolved at runtime (`config.get_extractor_model()` and friends) from the tenant's configured provider, defaulting to `anthropic` when unset. All agents call `agents/multi_llm.py:structured_call_multi()`, which dispatches to the resolved provider's SDK, handles retries (`LLM_MAX_RETRIES`), and records token usage via `usage_service`.
+HuMetric is multi-provider (Anthropic, OpenAI, Google, DeepSeek) via BYOK — never hardcode a specific model name in docs, prompts, or code comments. The active provider and its per-agent model are resolved at runtime (`config.get_extractor_model()` and friends) from the tenant's configured provider, defaulting to `anthropic` when unset. The three LLM-backed agents — `extractor`, `ranker` and `wizard` — call `agents/multi_llm.py:structured_call_multi()`, which dispatches to the resolved provider's SDK, handles retries (`LLM_MAX_RETRIES`), and records token usage via `usage_service`. `curator` is deliberately *not* one of them: merging extracted metrics with history is pure Python (`agents/curator.py` imports no LLM client), so the merge stays deterministic and free.
 
 Prompts are externalized in `prompts/*.md` and loaded at import time via `agents/__init__.py`. To override a prompt for a specific pack, set the `prompts.extraction` key in the Pack YAML.
 
@@ -142,9 +155,15 @@ await session.execute(
 PostgreSQL policies on each table filter rows automatically. **Fail-closed:** if `app.tenant_id` is not set, zero rows are returned — no data leak is possible.
 
 Rules:
-- Use `get_tenant_db()` for all runtime queries (RLS active).
-- Use `get_db()` only for admin/migration operations.
-- Never pass `tenant_id` as a WHERE clause from application code — trust RLS.
+- Use the tenant-scoped session for all runtime queries (`Depends(_get_tenant_session)` in `api.py`,
+  `get_tenant_db()` elsewhere). 37 of 44 routes do.
+- Use `get_db()` only for health checks, admin, and migration operations — today just
+  `/healthz/db` and `/healthz/worker`.
+- An explicit `.where(X.tenant_id == tenant_id)` **alongside** RLS is intentional
+  defence-in-depth and is used in ~12 places. RLS is the fail-closed backstop, not a reason to
+  drop the filter.
+- Every new tenant-scoped table needs its RLS policy and `humetric_app` grant **in the same
+  migration** — see `HM-DATA-02`. This was missed once already (`006` → retrofitted by `015`).
 
 ## KVKK / GDPR compliance
 
@@ -177,16 +196,32 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 - Body explains *why*, not what. Wrap at 72 chars.
 - `BREAKING CHANGE:` footer required when public API contracts change.
 
-## /commit slash command
+## Slash commands
 
-Available in both Claude Code and OpenCode. Type `/commit` to run it.
+Two commands, in order. Both live in `.claude/commands/`.
 
-What it does:
-1. Runs `git diff HEAD` to collect all changes.
-2. Runs `python -m py_compile` on each changed `.py` file — aborts on syntax errors.
-3. Runs `pytest tests/ -x -q --tb=short --timeout=30` — skips gracefully if the database is unavailable.
-4. Generates a Conventional Commits message from diff analysis.
-5. Presents the message for approval before committing.
+### `/pre-commit` — analyse, do not commit
+
+Pre-commit review. Pick which modules to run:
+
+| Module | What it does |
+|---|---|
+| Otomatik Kapılar | `py_compile`, `ruff check src/`, optionally pytest and the Alembic round-trip |
+| Migration Güvenliği | Alembic risk matrix — data loss, locks, and the missing-RLS-policy check |
+| Kod Review | The diff against `.claude/rules/STANDARDS.md`, including the `HM-REAS-*` reasoning pass |
+| Commit Mesajı | Drafts an English Conventional Commits message from the real diff |
+
+It reports in Turkish, ends with a `COMMIT EDİLEBİLİR / DÜZELTME GEREKLİ / BLOKLANMALI` verdict,
+and **never commits**. When the diff invalidates something in this file or in `STANDARDS.md`, it
+offers to update it — never without approval.
+
+### `/commit` — verify and commit
+
+1. Collects the diff.
+2. `python -m py_compile` on each changed `.py` file — aborts on syntax errors.
+3. `pytest tests/ -x -q --tb=short --timeout=30` — skips gracefully if the database is unavailable.
+4. Generates a Conventional Commits message.
+5. Presents it for approval, then commits.
 
 Usage: `/commit` or `/commit feat: my hint` to seed the type/description.
 
@@ -207,6 +242,9 @@ Usage: `/commit` or `/commit feat: my hint` to seed the type/description.
 - New Metric Pack fields: test in `test_pack_validation.py`.
 - All changed modules should have test coverage.
 
+Because `tests/` is gitignored, a missing test never blocks a commit — `/pre-commit` reports it as
+a non-blocking note (`HM-PROC-01`).
+
 ## Adding a new API endpoint
 
 1. Add Pydantic request/response models to `schema.py`.
@@ -217,15 +255,16 @@ Usage: `/commit` or `/commit feat: my hint` to seed the type/description.
 
 ## Common pitfalls
 
-- **Forgetting `await`** on async DB calls — SQLAlchemy async raises `MissingGreenlet` at runtime.
-- **Using `session.query()`** — legacy API, incompatible with async engine. Always use `select()`.
-- **Hardcoding tenant IDs in tests** — use the `test_tenant` fixture from `tests/conftest.py`.
-- **Writing embedding vectors directly** — use `Store.update_entity_embedding()` to keep the vector dimension consistent with `EMBED_DIM`.
-- **Calling `config.require_keys()` in tests** — the test conftest sets dummy env vars; the real key check should only run in production entrypoints.
+See [`.claude/rules/STANDARDS.md` §9](.claude/rules/STANDARDS.md) — missing `await`,
+`session.query()`, direct embedding writes, `config.require_keys()` in tests, and the 5433/5434
+database mix-up.
 
 ## Architecture decisions
 
-- **Single-file API (`api.py`):** all routes in one file for discoverability. If it grows beyond ~1500 lines, split into router modules under `src/humetric/routers/`.
+- **Single-file API (`api.py`):** all routes in one file for discoverability. The file has since
+  grown past the ~1500-line threshold at which it was meant to be split into router modules under
+  `src/humetric/routers/`. That split is accepted technical debt (`STANDARDS.md` §10.1) — it is not
+  a finding on unrelated commits, but new route groups should not make it worse.
 - **PostgreSQL task queue:** eliminates a separate broker dependency. Uses `SELECT FOR UPDATE SKIP LOCKED` for safe concurrent consumption. The worker is a simple `asyncio` loop in `worker.py`.
 - **Externalized prompts:** prompts live in `prompts/*.md` so they can be reviewed, versioned, and overridden per pack without touching Python code.
 - **Multi-provider embeddings:** provider selected at startup via `HUMETRIC_EMBEDDING_PROVIDER`. All providers normalise to a fixed vector dimension; changing `EMBED_DIM` requires a schema migration.

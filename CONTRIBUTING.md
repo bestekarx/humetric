@@ -49,8 +49,11 @@ overview.
 
 ## Coding conventions
 
-A short summary — the authoritative, detailed list lives in
-[`CLAUDE.md`](CLAUDE.md):
+A short summary. The authoritative rulebook is
+[`.claude/rules/STANDARDS.md`](.claude/rules/STANDARDS.md) — categorised, numbered
+rules with a detection command for each, plus the list of known exemptions that
+reviewers should *not* flag. [`CLAUDE.md`](CLAUDE.md) covers architecture and
+workflow.
 
 - **Python 3.11+** with `from __future__ import annotations` at the top of
   every module.
@@ -68,11 +71,16 @@ A short summary — the authoritative, detailed list lives in
 - **Configuration** through `src/humetric/config.py` reading from
   environment variables. Never hardcode secrets, hostnames, or model names.
 
-We lint with [ruff](https://docs.astral.sh/ruff/). Before opening a PR:
+We lint with [ruff](https://docs.astral.sh/ruff/). Note that `ruff` is not on
+`PATH` in the usual dev setup — use the virtualenv path. Before opening a PR:
 
 ```bash
-ruff check src/
+.venv/bin/ruff check src/
 ```
+
+If you use Claude Code, `/pre-commit` runs this gate along with `py_compile`,
+the migration-safety analysis, and a review against the rulebook, then drafts a
+Conventional Commits message. It reports but never commits; `/commit` does that.
 
 ## Running tests
 
@@ -120,7 +128,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 1. Fork the repo and create a branch from `main`. Suggested naming:
    `feat/short-description`, `fix/short-description`, `docs/short-description`.
 2. Make one logical change per PR.
-3. Ensure `ruff check src/` passes and your tests are green locally.
+3. Ensure `.venv/bin/ruff check src/` passes and your tests are green locally.
 4. Give the PR a Conventional-Commits-style title (it becomes the squash
    commit message).
 5. Fill out the PR template, linking any related issue
