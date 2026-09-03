@@ -1,0 +1,14 @@
+{
+  "_comment": "Verify every figure against your own invoices before quoting.",
+  "server_eur_month": 25.0,
+  "server_vcpu": 4,
+  "server_ram_gb": 8,
+  "storage_eur_gb_month": 0.1,
+  "index_overhead_multiplier": 1.8,
+  "backup_copies": 2,
+  "retention_months": 12,
+  "target_utilisation": 0.4,
+  "embedding_usd_per_1m_tokens": 0.06,
+  "embedding_chars_per_token": 4.0,
+  "eur_per_usd": 0.92
+}
