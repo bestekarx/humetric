@@ -209,9 +209,14 @@ REGISTER_RATE_LIMIT_PER_HOUR = int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT"
 REQUIRE_EMAIL_VERIFICATION = (
     os.environ.get("HUMETRIC_REQUIRE_EMAIL_VERIFICATION", "true").lower() != "false"
 )
-FREE_TIER_SIGNAL_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_SIGNAL_LIMIT", "1000"))
-FREE_TIER_ENTITY_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_ENTITY_LIMIT", "10"))
-FREE_TIER_PACK_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_PACK_LIMIT", "1"))
+# Sized so the free tier can carry a real pilot, not just a smoke test: 10
+# entities could not measure even one small team, which stopped evaluations
+# before they produced anything worth discussing. The infrastructure cost of
+# the higher ceiling is negligible — a fully used free tenant costs cents a
+# month (see the cost measurements in scripts/cost_bench.py).
+FREE_TIER_SIGNAL_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_SIGNAL_LIMIT", "10000"))
+FREE_TIER_ENTITY_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_ENTITY_LIMIT", "50"))
+FREE_TIER_PACK_LIMIT = int(os.environ.get("HUMETRIC_FREE_TIER_PACK_LIMIT", "3"))
 
 # Self-service Pro trial: length in calendar months and how often the worker
 # sweeps for trials that are due to expire.
