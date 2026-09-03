@@ -1,13 +1,15 @@
 ---
 name: humetric-gorsel
-description: HuMetric için sosyal medya içeriği üretir — kart (LinkedIn/X/Instagram görseli), carousel PDF'i, blog yazısı ve gönderi metni. Bir özelliği tek karede iddia + kanıt olarak gösteren HTML kartı yazar, PNG'ye basar, istenirse arkasına blog yazısı ve LinkedIn metni koyup yayınlar. Kullanıcı "buna görsel yap", "LinkedIn kartı hazırla", "carousel yap", "bunun blogunu yaz", "LinkedIn postu yaz", "sosyal medyada paylaşalım" dediğinde çalıştır.
+description: HuMetric için sosyal medya içeriği üretir — kart (LinkedIn/X/Instagram görseli), carousel PDF'i, blog yazısı, gönderi metni ve sessiz demo videosu (Remotion). Bir özelliği tek karede iddia + kanıt olarak gösteren HTML kartı yazar, PNG'ye basar, istenirse arkasına blog yazısı ve LinkedIn metni koyup yayınlar. Kullanıcı "buna görsel yap", "LinkedIn kartı hazırla", "carousel yap", "bunun blogunu yaz", "LinkedIn postu yaz", "video yap", "sosyal medyada paylaşalım" dediğinde çalıştır.
 ---
 
 # HuMetric sosyal medya içerik üretimi
 
-Bir özellikten dört çıktı üretilebilir: **kart** (kare PNG), **carousel PDF**,
-**blog yazısı**, **gönderi metni**. Kullanıcı hangisini istediyse oraya kadar
-git — kart her zaman ilk adım, gerisi opsiyonel.
+Bir özellikten beş çıktı üretilebilir: **kart** (kare PNG), **carousel PDF**,
+**blog yazısı**, **gönderi metni**, **video** (sessiz UI demosu). Kart/PDF/
+blog/gönderi zinciri için kart her zaman ilk adım, gerisi opsiyonel — ama
+**video bu zincirden bağımsız**: kullanıcı doğrudan "video yap" dediğinde
+kart adımını atla, direkt **E. Video**'ya git.
 
 Sistem, yan yana duran site deposunda yaşıyor (bu deponun köküne göre):
 `../humetric-site/docs/sunum/social/`
@@ -119,7 +121,30 @@ hashtag.
 
 ---
 
-## E. Yayın (kullanıcı "yayınla" / "canlıya al" dediyse)
+## E. Video (kullanıcı "video yap" / "video oluştur" dediyse)
+
+`video/` altında Remotion tabanlı, sessiz (anlatımsız) bir UI demo şablonu
+var — node graph'ın (sinyal → extractor → curator → metrikler) sırayla
+belirmesi, üstte sayaçlar ve tek bir "flag" (uyarı) node'u. Marka paleti ve
+fontlar `system.css` ile birebir aynı (`video/src/theme.ts`).
+
+1. **`video/README.md`'yi oku.** İçeriği değiştirmenin tek yolu
+   `video/src/story.ts` — component dosyalarına dokunma.
+2. **Senaryoyu `story.ts`'e yaz.** Node'lar (`x`/`y`, `appearAt` frame,
+   `state`), başlık metinleri (`statusBeats`), kaynak chip'i. Metrik
+   anahtarlarını uydurma — MEKANIZMA.md'den veya ilgili pack YAML'ından al.
+3. **Önizle:** `cd video && npm run preview` (Remotion Studio).
+4. **Bas:** `npm run render` → `video/out/signal-flow.mp4`.
+5. Ses/anlatım eklenmesi istenirse (TTS, senaryo metni) önce metni onaya
+   sun — [[feedback_script_first_video]] kuralı burada da geçerli, anlatımlı
+   sürüm ayrı bir iştir.
+
+`docs/sunum/` gitignore'da olduğu için video projesi ve render çıktıları
+depoya gitmez.
+
+---
+
+## F. Yayın (kullanıcı "yayınla" / "canlıya al" dediyse)
 
 1. **Yerelde bak:** humetric-site'ta `npm run start:backend` →
    `http://localhost:3001/blog/<slug>`. Render'ını görmeden basma.
