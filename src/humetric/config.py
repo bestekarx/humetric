@@ -168,6 +168,27 @@ HASSAS_METRIC_KEYS: list[str] = os.environ.get(
 RATE_LIMIT_PER_MINUTE = int(os.environ.get("HUMETRIC_RATE_LIMIT", "100"))
 
 LLM_MAX_RETRIES = int(os.environ.get("HUMETRIC_LLM_MAX_RETRIES", "3"))
+
+# LLM_MAX_RETRIES above is handed to the provider SDKs, so it only covers
+# transport failures. A 200 response carrying malformed JSON never reaches it.
+# LLM_FORMAT_RETRIES bounds how many times we re-ask the model after a parse
+# failure, feeding the bad output and the parse error back into the
+# conversation. Because the happy path pins temperature to 0, re-issuing an
+# identical request reproduces identical bad bytes — LLM_REPAIR_TEMPERATURE
+# lifts the temperature on those re-asks so the model can actually diverge.
+LLM_FORMAT_RETRIES = int(os.environ.get("HUMETRIC_LLM_FORMAT_RETRIES", "1"))
+LLM_REPAIR_TEMPERATURE = float(os.environ.get("HUMETRIC_LLM_REPAIR_TEMPERATURE", "0.2"))
+# How much of the bad reply is echoed back to the model on a re-ask.
+LLM_REPAIR_ECHO_MAX_CHARS = int(os.environ.get("HUMETRIC_LLM_REPAIR_ECHO_MAX_CHARS", "4000"))
+# A malformed reply is byte-identical on replay (the happy path pins
+# temperature to 0), so the in-call re-ask is what actually recovers it. Giving
+# format failures the full TASK_MAX_RETRIES budget would burn
+# 4 task attempts x 2 completions = 8 calls on an input that cannot change.
+# One task-level retry is enough insurance against genuine provider flakiness.
+TASK_FORMAT_MAX_RETRIES = int(os.environ.get("HUMETRIC_TASK_FORMAT_MAX_RETRIES", "1"))
+# Raw provider output is attached to the parse error so a failed signal stays
+# diagnosable; it lands in Task.last_error / Signal.error (both TEXT), so cap it.
+LLM_ERROR_RAW_MAX_CHARS = int(os.environ.get("HUMETRIC_LLM_ERROR_RAW_MAX_CHARS", "2000"))
 DECAY_ENABLED = os.environ.get("HUMETRIC_DECAY_ENABLED", "true").lower() != "false"
 ENFORCE_TIER_LIMITS = os.environ.get("HUMETRIC_ENFORCE_TIER_LIMITS", "false").lower() == "true"
 

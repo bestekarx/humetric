@@ -40,10 +40,16 @@ def build_extract_inputs(
             mtype = m.get("type", "float")
             lines.append(f"  - {key} ({mtype}): {description}")
         if lines:
+            # The closing sentence matters: listing the keys as bullets primes
+            # some models to answer with a flat {"key": value} mapping, which
+            # is not the schema. Say plainly where the key belongs.
             allowed_block = (
                 "\nUse ONLY the metric_keys defined below. Do NOT invent new "
                 "keys that aren't in the list. Skip metrics that have no "
                 "counterpart in the signal:\n" + "\n".join(lines) + "\n"
+                "\nEach key above goes in the \"metric_key\" field of its own "
+                "object inside the \"metrics\" array — never use a key as a "
+                "JSON property name.\n"
             )
 
     if allowed_block:

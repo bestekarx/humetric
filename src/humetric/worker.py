@@ -12,17 +12,33 @@ import json
 import logging
 import re
 import signal
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import config, kvkk
 from .agents import curator, extractor
+from .agents.multi_llm import LLMOutputParseError
 from .store import Store, _build_embed_text_safe
 
 _log = logging.getLogger(__name__)
 
 _running = True
+
+
+class NonRetryableTaskError(Exception):
+    """A task failure that re-running cannot fix (bad input, missing dependency).
+
+    Failures used to be classified by `isinstance(exc, ValueError)`, which meant
+    any unclassified ValueError destroyed a signal on its first attempt. Pydantic's
+    ValidationError is a ValueError, so one malformed LLM reply was terminal.
+    Non-retryability is now opt-in and explicit rather than inferred from a base
+    class the raiser never chose.
+    """
+
+
+# 4xx by status code but transient by meaning — retrying is the correct response.
+_RETRYABLE_STATUS_CODES = frozenset({408, 409, 429})
 
 # Day-one quarantine for the instruction-injection gap: a verbatim match no
 # longer clears review on its own if the cited span itself reads like an
@@ -81,7 +97,7 @@ async def process_signal_task(db: AsyncSession, task) -> None:
 
     entity = await Store.get_entity(db, entity_id, task.tenant_id)
     if not entity:
-        raise ValueError(f"Entity not found: {entity_id}")
+        raise NonRetryableTaskError(f"Entity not found: {entity_id}")
 
     from .agents.base import get_tenant_llm_config
     from .agents.versioning import hash_text
@@ -301,7 +317,7 @@ async def process_lakehouse_export_task(db: AsyncSession, task) -> None:
     try:
         from .analytics.export import run_tenant_export
     except RuntimeError as exc:
-        raise ValueError(str(exc)) from exc  # non-retryable: missing analytics deps
+        raise NonRetryableTaskError(str(exc)) from exc  # missing analytics deps
 
     from datetime import date as date_type
 
@@ -373,7 +389,7 @@ async def process_export_request_task(db: AsyncSession, task) -> None:
 
     export = await Store.get_export_by_task_id(db, task.id)
     if export is None:
-        raise ValueError(f"No user_export row for task {task.id}")
+        raise NonRetryableTaskError(f"No user_export row for task {task.id}")
 
     await Store.mark_export_processing(db, export.id)
     fmt = task.payload.get("format", "json")
@@ -415,30 +431,49 @@ async def process_export_request_task(db: AsyncSession, task) -> None:
     _log.info("Export task %d completed for tenant %d -> %s", task.id, task.tenant_id, zip_name)
 
 
+def _classify_failure(exc: Exception) -> tuple[bool, int | None]:
+    """Return (retryable, max_attempts_override) for a task failure.
+
+    Retryable is the default; non-retryability must be declared, either by
+    raising NonRetryableTaskError or by a client-error status code.
+    """
+    if isinstance(exc, NonRetryableTaskError):
+        return False, None
+    if isinstance(exc, LLMOutputParseError):
+        # multi_llm already re-asked the model in-call. The signal text is
+        # identical on replay, so a full task-retry budget would just buy more
+        # copies of the same answer; one more attempt covers provider flakiness.
+        return True, config.TASK_FORMAT_MAX_RETRIES
+    status_code = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
+    if isinstance(status_code, int):
+        if status_code in _RETRYABLE_STATUS_CODES:
+            return True, None
+        if 400 <= status_code < 500:
+            return False, None
+    return True, None
+
+
 async def handle_failure(db: AsyncSession, task, exc: Exception) -> None:
     """Decide whether to retry or permanently fail on error."""
 
-    is_retryable = True
-    status_code = getattr(exc, "status_code", None) or getattr(exc, "http_status", None)
-    if status_code and 400 <= status_code < 500:
-        is_retryable = False
-    elif isinstance(exc, ValueError):
-        is_retryable = False
+    is_retryable, override = _classify_failure(exc)
+    budget = task.max_retries if override is None else min(task.max_retries, override)
 
-    if is_retryable and task.retry_count < task.max_retries:
+    if is_retryable and task.retry_count < budget:
         backoff = 2 ** task.retry_count
-        next_retry = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-        from datetime import timedelta
         next_retry = datetime.now(timezone.utc) + timedelta(seconds=backoff)
         _log.warning(
             "Task %d failed (attempt %d/%d), retrying in %ds: %s",
-            task.id, task.retry_count + 1, task.max_retries, backoff, exc,
+            task.id, task.retry_count + 1, budget, backoff, exc,
         )
         await Store.schedule_retry(db, task.id, next_retry)
         if task.signal_id:
+            # clear_error, not error=None: the status setter only assigns a
+            # truthy error, so without this a signal that later completes would
+            # still be carrying the parse error from the attempt that failed.
             await Store.update_signal_status(
                 db, task.signal_id, task.tenant_id, "received",
-                error=None,
+                clear_error=True,
             )
     else:
         _log.error("Task %d permanently failed: %s", task.id, exc)

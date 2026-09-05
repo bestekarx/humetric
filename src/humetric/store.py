@@ -330,6 +330,7 @@ class Store:
     async def update_signal_status(
         db: AsyncSession, signal_id: str, tenant_id: int,
         status: str, result: dict | None = None, error: str | None = None,
+        clear_error: bool = False,
     ) -> Signal | None:
         signal = await Store.get_signal(db, signal_id, tenant_id)
         if not signal:
@@ -339,6 +340,8 @@ class Store:
             signal.result = {**signal.result, **result}
         if error:
             signal.error = error
+        elif clear_error:
+            signal.error = None
         if status in ("completed", "failed"):
             signal.processed_at = datetime.now(timezone.utc)
         db.add(signal)
