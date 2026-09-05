@@ -38,17 +38,18 @@ Raw Signal → Extractor Agent → Curator (deterministic merge) → Stored Metr
 
 ### Core Pipeline
 
-1. **Define your domain** with a Metric Pack (YAML file). Specify entity type, which metrics to track, prompts for extraction/curation, and sensitivity rules.
+1. **Define your domain** with a Metric Pack (YAML file). Specify entity type, which metrics to track, the extraction prompt, and sensitivity rules.
 
 2. **Register entities** via API. Each entity gets a unique ID, type, optional fields, and free-text description.
 
 3. **Send signals** — any observation about an entity. Signals enter an async task queue.
 
 4. **Background processing:**
-   - **Extractor Agent** reads the signal text and extracts structured metrics (key, value, confidence, reasoning)
-   - **Curator** compares against existing metrics, decides to accept/merge/reject, and computes a confidence-weighted final value
-   - **Temporal decay** is applied — older signals lose weight over time
+   - **Extractor Agent** reads the signal text and extracts structured metrics (key, value, confidence, reasoning, and a verbatim `source_span`) — this is the only LLM call
+   - **Deterministic merge** combines the extraction with the stored value using a confidence-weighted average, drops anything below the confidence threshold, and penalises pack type mismatches — no model call
+   - **Consent and evidence gates** run at write time: sensitive metrics need a granted consent scope, and a `source_span` that is not verbatim in the signal routes the metric to human review
    - The entity is re-embedded for vector search
+   - **Temporal decay** is *not* applied here — it is a read-time weighting on confidence, so stored values stay reproducible
 
 5. **Query entities** using hybrid search (vector similarity + full-text) combined with LLM re-ranking.
 
@@ -59,7 +60,7 @@ Each agent handles a single, testable unit of work:
 | Agent | Responsibility |
 |-------|----------------|
 | **Extractor** | Parse free text → structured metric tuples (key, value, confidence) |
-| **Curator** | Validate extractions against historical data, merge with existing profile |
+| **Curator** | Merge extractions with the stored profile — deterministic Python, **not an LLM call** |
 | **Ranker** | Re-rank hybrid search results based on query intent |
 | **Wizard** | Generate Metric Pack YAML from natural language description |
 
@@ -202,14 +203,14 @@ curl -X POST "$BASE/query" \
        │                                          │
        │  ┌────────────┐              ┌───────────▼───────────┐
        └─▶│ PostgreSQL │◀─────────────│  Agent Pipeline        │
-          │ + pgvector │              │  Extract → Curate     │
-          │ + RLS      │              │  Re-embed → Complete   │
-          └─────┬──────┘              └───────────────────────┘
-                │
-    ┌───────────┴───────────┐
-    │  Anthropic (LLM)      │
-    │  Voyage AI (Embedding)│
-    └───────────────────────┘
+          │ + pgvector │              │  Extract (LLM)         │
+          │ + RLS      │              │  Merge (deterministic) │
+          └─────┬──────┘              │  Re-embed → Complete   │
+                │                     └───────────────────────┘
+    ┌───────────┴────────────────┐
+    │  LLM provider (BYOK)       │
+    │  Embedding provider (BYOK) │
+    └────────────────────────────┘
 ```
 
 | Layer | Technology |
@@ -227,7 +228,7 @@ curl -X POST "$BASE/query" \
 ## MCP Server
 
 Integrate HuMetric directly into Claude Desktop, Claude Code, Cursor, or any MCP-compatible
-client. The server exposes 24 typed tools covering signals, entities/metrics, query, metric
+client. The server exposes 26 typed tools covering signals, entities/metrics, query, metric
 packs, human review, KVKK consent, and account/audit endpoints.
 
 📖 **Step-by-step setup:** [`docs/mcp-setup.md`](docs/mcp-setup.md) (English) ·
@@ -320,9 +321,9 @@ curl -X PUT "$BASE/tenant/keys" \
 Switch embedding providers without code changes:
 
 ```bash
-HUMETRIC_EMBEDDING_PROVIDER=voyage   # default
-HUMETRIC_EMBEDDING_PROVIDER=openai   # text-embedding-3-small (1536 dim)
-HUMETRIC_EMBEDDING_PROVIDER=cohere   # embed-english-v3.0 (1024 dim)
+HUMETRIC_EMBEDDING_PROVIDER=voyage   # default, 1024 dim
+HUMETRIC_EMBEDDING_PROVIDER=openai   # 1536 dim
+HUMETRIC_EMBEDDING_PROVIDER=cohere   # 1024 dim
 ```
 
 All providers include built-in exponential backoff and retry logic.
@@ -411,8 +412,8 @@ All settings via environment variables (see `.env.example`):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | Anthropic API key (required) |
-| `VOYAGE_API_KEY` | — | Voyage AI API key (required) |
+| `ANTHROPIC_API_KEY` | — | Platform fallback LLM key. Checked together with `VOYAGE_API_KEY` the first time a tenant without a BYO key needs the platform client — so it is required unless every tenant brings its own |
+| `VOYAGE_API_KEY` | — | Platform fallback embedding key (see above) |
 | `DATABASE_URL` | — | PostgreSQL connection string |
 | `HUMETRIC_AUTH_SECRET` | — | Secret for auth tokens |
 | `HUMETRIC_EMBEDDING_PROVIDER` | `voyage` | `voyage`, `openai`, or `cohere` |

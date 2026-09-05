@@ -36,7 +36,7 @@ src/humetric/
     __init__.py    — Prompt loader (_load_prompt)
     base.py        — structured_call() — Anthropic client wrapper + retry
     extractor.py   — extract_metrics(signal_text, pack, tenant_id)
-    curator.py     — curate_metrics(extracted, history, pack, tenant_id)
+    curator.py     — finalize_merge(extracted, existing, pack) — deterministic, no LLM
     ranker.py      — rerank(query, candidates, tenant_id)
     wizard.py      — generate_pack(description, tenant_id)
   db/
@@ -91,7 +91,7 @@ All function signatures must be annotated. Use `from __future__ import annotatio
 | `python worker.py` | Start background signal processor |
 | `alembic upgrade head` | Apply all pending migrations |
 | `alembic revision --autogenerate -m "<desc>"` | Generate a new migration |
-| `pytest tests/ -x -q` | Run tests (requires Docker PostgreSQL on port 5434) |
+| `pytest tests/ -x -q` | Run tests (needs a live PostgreSQL+pgvector — port per [`LOCAL_RUN.md`](LOCAL_RUN.md#portlar): 5433 Homebrew, 5434 Docker) |
 
 ## Adding a feature — checklist
 

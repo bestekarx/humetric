@@ -48,24 +48,43 @@ Parse the diff to identify:
 
 ---
 
-## Step 3 — Python syntax check
+## Step 3 — Quality gates
 
-For each `.py` file that appears as added or modified in the diff, run:
+> The gate list is **not** defined here. The single source of truth is
+> [`.claude/rules/STANDARDS.md` §7](../rules/STANDARDS.md), which mirrors
+> `.github/workflows/ci.yml`. Run what that section lists; the commands below are the
+> current contents of it, repeated only so this command is runnable in one pass.
+> If the two ever disagree, STANDARDS.md wins and this file needs updating.
 
 ```bash
-python -m py_compile src/humetric/some_module.py
+.venv/bin/ruff check src/                     # ruff is NOT on PATH — use the venv path
+python -m py_compile <each changed .py file>
 ```
 
-Run each file individually. Collect all errors. If any produce stderr output (syntax error), report them and **stop** — do not proceed to commit until fixed.
+Run `py_compile` per file and collect all errors. Any syntax error or ruff finding **on a
+file the diff touches**: report and **stop**. Pre-existing findings in untouched files are
+listed in STANDARDS.md §10 and are not this commit's problem.
 
-Skip this step if no `.py` files are in the diff.
+Skip both if no `.py` files are in the diff.
+
+If the diff touches `alembic/versions/`, also run the round-trip:
+
+```bash
+.venv/bin/alembic upgrade head && .venv/bin/alembic downgrade -1 && .venv/bin/alembic upgrade head
+```
+
+A failing downgrade fails CI (`HM-DATA-04`). Skip with a note if the database is unavailable.
+
+**This command does not review the diff against the rulebook.** For the HM-* review,
+migration risk matrix, and reasoning pass, run `/pre-commit` first — it analyses and never
+commits.
 
 ---
 
 ## Step 4 — Test suite (best-effort)
 
 ```bash
-pytest tests/ -x -q --tb=short --timeout=30
+.venv/bin/pytest tests/ -x -q --tb=short --timeout=30
 ```
 
 Interpret exit codes:
@@ -195,6 +214,9 @@ Report: "Committed: `<sha> <subject>`"
 
 - No git: abort in Step 1.
 - No Python interpreter: skip Steps 3–4 with a note, continue to Step 5.
+- No `.venv/` (ruff/pytest/alembic missing): skip those gates with a note, continue. Do **not**
+  fall back to a bare `ruff` / `pytest` on PATH — a different version there produces findings
+  CI will not reproduce.
 - No pytest installed: skip Step 4 with a note, continue.
 - Database unavailable (connection errors in pytest output): skip tests, note it, continue.
 - Empty diff: abort in Step 2.

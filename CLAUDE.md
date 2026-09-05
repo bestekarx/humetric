@@ -22,6 +22,12 @@ Domain-agnostic entity intelligence platform. Turns unstructured text signals in
 
 ## Quick orientation
 
+> 🗺️ **Mermaid mimari diyagramları: [`docs/architecture/`](docs/architecture/overview.md)** —
+> `overview.md` (iki repo + deploy), `pipeline.md` (ingest→task→extractor→merge, promptlar,
+> pack'ler), `data-model.md` (ER, RLS, hafıza katmanları), `mcp.md` (iki MCP sunucusu),
+> `site.md` (humetric-site iç mimarisi). Repo içi referanstır; VitePress sitesine dahil
+> **değildir** (`srcExclude`) çünkü Mermaid eklentisiz render edilmiyor — GitHub'da okunur.
+
 ```
 src/humetric/
   api.py               All FastAPI route handlers (single file)
@@ -269,3 +275,13 @@ database mix-up.
 - **Externalized prompts:** prompts live in `prompts/*.md` so they can be reviewed, versioned, and overridden per pack without touching Python code.
 - **Multi-provider embeddings:** provider selected at startup via `HUMETRIC_EMBEDDING_PROVIDER`. All providers normalise to a fixed vector dimension; changing `EMBED_DIM` requires a schema migration.
 - **Fail-closed RLS:** missing tenant context returns zero rows, never a data leak.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

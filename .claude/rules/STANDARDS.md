@@ -76,7 +76,13 @@ restricted app role (permission denied at runtime) and loses defence-in-depth.
 **Evidence:** **this has already happened.** `006_tenant_stripe_subscription.py` created
 `metering_record` with a `tenant_id` and no policy; `015_metering_record_rls.py` had to
 retrofit it months later. Its docstring documents the exact failure mode.
-**✅ pattern:** copy the policy + grant block from `020_llm_call_record.py`.
+**✅ pattern:** take the **grant + `ENABLE ROW LEVEL SECURITY` block** from
+`020_llm_call_record.py` and the **comparison expression** from `022_rls_blank_tenant_guc.py`:
+`tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::bigint`. The bare
+`current_setting(...)::bigint` form aborts the query when the GUC holds an empty string —
+which is exactly what `get_tenant_db()` leaves on a pooled connection at teardown.
+**Do not copy 020's policy body verbatim:** 022 rewrote every policy at runtime, but 020's
+own source still carries the bare form on disk, so it is a broken copy-paste template.
 
 ### HM-DATA-03 — Destructive migration operations
 **Severity:** KRİTİK / YÜKSEK by operation · **Scope:** `alembic/versions/*.py`
@@ -176,7 +182,8 @@ Use `asyncio.sleep` and an async HTTP client.
 ### HM-CONV-03 — English in tracked code
 **Severity:** ÖNEMLİ · **Scope:** `src/`, `alembic/`, commit messages
 **Rule:** identifiers, comments, docstrings, and commit messages are English.
-**Exception:** `LOCAL_RUN.md`, `LOCAL_DB.md`, `CLAUDE.local.md`, `docs/plans/`, and prompt text
+**Exception:** `LOCAL_RUN.md`, `LOCAL_DB.md`, `CLAUDE.local.md`, `docs/plans/`, `docs/architecture/`
+(repo-internal Mermaid reference, excluded from the VitePress site via `srcExclude`), and prompt text
 that is deliberately Turkish.
 **Evidence:** commit `673dbe5` translated the last Turkish comments out of the codebase.
 

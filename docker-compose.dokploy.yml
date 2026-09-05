@@ -58,6 +58,10 @@ services:
       HUMETRIC_REQUIRE_EMAIL_VERIFICATION: "false"
       HUMETRIC_BASE_URL: https://api.gethumetric.com
       HUMETRIC_ENFORCE_TIER_LIMITS: "true"
+      # Must match Dockerfile.prod's uvicorn --workers flag — rate-limit
+      # buckets are per-process; this divides configured limits so the
+      # aggregate across workers approximates the intended value.
+      HUMETRIC_WORKER_COUNT: "4"
       HUMETRIC_FREE_TIER_SIGNAL_LIMIT: ${HUMETRIC_FREE_TIER_SIGNAL_LIMIT:-10000}
       HUMETRIC_FREE_TIER_ENTITY_LIMIT: ${HUMETRIC_FREE_TIER_ENTITY_LIMIT:-50}
       HUMETRIC_FREE_TIER_PACK_LIMIT: ${HUMETRIC_FREE_TIER_PACK_LIMIT:-3}

@@ -4,6 +4,12 @@ export default defineConfig({
   title: 'HuMetric',
   description: 'Entity metric tracking and signal processing platform',
   lang: 'en-US',
+  // architecture/ repo ici mimari referansidir, yayin sitesinin parcasi degil:
+  // Turkce, `dosya:satir` referanslari veriyor ve diyagramlari Mermaid ile
+  // yaziliyor. VitePress Mermaid'i eklentisiz render etmiyor, o yuzden bu
+  // sayfalar siteye alinsa kod blogu olarak gorunurdu. GitHub Mermaid'i
+  // native render ediyor -- dosyalar orada okunuyor.
+  srcExclude: ['architecture/**'],
   themeConfig: {
     logo: '/logo.svg',
     nav: [

@@ -128,6 +128,12 @@ async def get_tenant_db(api_key_id: int, tenant_id: int) -> AsyncGenerator[Async
     new transaction starts on this session, on whichever connection it gets.
     The GUC is reset when the session closes (no connection-pool leakage).
 
+    "Reset" here means an empty string, not NULL: PostgreSQL offers no way to
+    unset a custom GUC on a live connection — set_config(.., NULL, ..) stores ''
+    just the same. So every policy reads the GUC through NULLIF (migration 022);
+    without it the next non-tenant session on that pooled connection dies on
+    ''::bigint instead of seeing zero rows.
+
     set_config() is called with a parametrized query — safe from SQL injection.
     """
     factory = get_async_session_factory()

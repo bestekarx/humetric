@@ -322,6 +322,15 @@ async def create_entity(
 
     entity = await Store.upsert_entity(db, data)
 
+    await Store.audit(
+        db,
+        tenant_id=tenant_id,
+        action="entity.created" if is_new else "entity.updated",
+        entity_id=entity.id,
+        api_key_id=request.state.api_key_id,
+        details={"entity_type": entity.entity_type, "fields": sorted((body.fields or {}).keys())},
+    )
+
     if not is_new:
         response.status_code = 200
 
@@ -877,6 +886,21 @@ async def create_signal(
         },
     })
 
+    await Store.audit(
+        db,
+        tenant_id=tenant_id,
+        action="signal.ingested",
+        entity_id=body.entity_id,
+        api_key_id=request.state.api_key_id,
+        details={
+            "signal_id": signal_id,
+            "entity_type": body.entity_type,
+            "pack_key": pack_key,
+            "pack_version": pack_version,
+            "external_id": external_id or None,
+        },
+    )
+
     try:
         await record_signal(tenant_id)
     except Exception:
@@ -1232,6 +1256,19 @@ async def create_pack(
     pack = await Store.create_pack(db, tenant_id, pack_key, parsed.version, pack_def)
     label = pack.definition.get("label", pack.pack_key)
 
+    await Store.audit(
+        db,
+        tenant_id=tenant_id,
+        action="pack.created",
+        api_key_id=request.state.api_key_id,
+        details={
+            "pack_key": pack.pack_key,
+            "version": pack.version,
+            "entity_type": entity_type,
+            "metric_count": len(parsed.metrics or []),
+        },
+    )
+
     return PackRead(
         pack_key=pack.pack_key,
         version=pack.version,
@@ -1357,8 +1394,27 @@ async def update_pack(
     _check_max_metrics(parsed)
 
     pack_def = parsed.model_dump(exclude_none=True)
+    # Read the old version *before* the update: Store.update_pack re-fetches the
+    # same row, so SQLAlchemy's identity map hands it this very `existing`
+    # instance and increments it in place. Reading existing.version afterwards
+    # would report the new version as the previous one.
+    previous_version = existing.version
     updated = await Store.update_pack(db, tenant_id, pack_key, pack_def)
     label = updated.definition.get("label", updated.pack_key)
+
+    await Store.audit(
+        db,
+        tenant_id=tenant_id,
+        action="pack.updated",
+        api_key_id=request.state.api_key_id,
+        details={
+            "pack_key": updated.pack_key,
+            "previous_version": previous_version,
+            "version": updated.version,
+            "entity_type": updated.definition.get("entity_type", ""),
+            "metric_count": len(parsed.metrics or []),
+        },
+    )
 
     return PackRead(
         pack_key=updated.pack_key,
@@ -2295,6 +2351,41 @@ async def reviewer_override_metric(
             status_code=404,
             detail=error_envelope("signal_not_found", f"Metric not found: {entity_id}/{metric_key}").model_dump(),
         )
+
+    # KVKK: audit_log.details is read back through GET /v1/audit-logs, which has
+    # no consent filter. Writing a sensitive metric's value there would make it
+    # readable without consent and would survive a revocation, so for a metric
+    # listed in the pack's kvkk.sensitive_metrics only the fact of the override
+    # is recorded — never the values themselves or the reviewer's comment.
+    entity = await Store.get_entity(db, entity_id, tenant_id)
+    pack = (
+        await Store.get_active_pack_for_type(db, tenant_id, entity.entity_type)
+        if entity else None
+    )
+    sensitive_keys = set(
+        (pack.definition.get("kvkk", {}) if pack else {}).get("sensitive_metrics", [])
+    )
+
+    if metric_key in sensitive_keys:
+        details = {"metric_key": metric_key, "sensitive": True, "values_redacted": True}
+    else:
+        details = {
+            "metric_key": metric_key,
+            "previous_value": prev_metric.value if prev_metric else None,
+            "previous_confidence": prev_metric.confidence if prev_metric else None,
+            "new_value": body.value,
+            "new_confidence": body.confidence,
+            "comment": body.comment,
+        }
+
+    await Store.audit(
+        db,
+        tenant_id=tenant_id,
+        action="metric.overridden",
+        entity_id=entity_id,
+        api_key_id=request.state.api_key_id,
+        details=details,
+    )
 
     return ReviewerOverrideResponse(
         entity_id=entity_id,

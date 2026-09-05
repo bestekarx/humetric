@@ -1,8 +1,10 @@
 """SQLAlchemy ORM models — Humetric Phase 0 (Spec 021) + Signal/UsageRecord (Spec 022) + MetricPack (Spec 023) + Tenant registration/Stripe (Spec 026).
 
-11 tables: tenant, entity, entity_metric, entity_metric_history, api_key, consent, audit_log,
-signal, usage_record, metric_pack, task.
+14 tables: tenant, entity, entity_metric, entity_metric_history, api_key, consent, audit_log,
+signal, usage_record, metering_record, llm_call_record, metric_pack, task, user_export.
 RLS: every tenant-scoped table has a tenant_id FK + RLS policy (defined in migrations).
+tenant is the one exception — tenant_id *is* its identity, so it carries grants
+instead of a policy (migration 008).
 """
 
 from __future__ import annotations

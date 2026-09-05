@@ -165,7 +165,16 @@ HASSAS_METRIC_KEYS: list[str] = os.environ.get(
     "",
 ).split(",") if os.environ.get("HUMETRIC_HASSAS_METRIC_KEYS") else []
 
-RATE_LIMIT_PER_MINUTE = int(os.environ.get("HUMETRIC_RATE_LIMIT", "100"))
+# Number of uvicorn worker processes this app is deployed with (see
+# Dockerfile.prod's --workers flag). In-memory rate-limit buckets are
+# per-process, so with N workers the real aggregate limit is up to N times
+# the configured per-process value. Divide by this so the aggregate
+# approximates intent. Must be kept in sync manually with --workers; there
+# is no Redis-backed shared counter, so this is an approximation that
+# breaks down under uneven load distribution across workers.
+WORKER_COUNT = max(1, int(os.environ.get("HUMETRIC_WORKER_COUNT", "1")))
+
+RATE_LIMIT_PER_MINUTE = max(1, int(os.environ.get("HUMETRIC_RATE_LIMIT", "100")) // WORKER_COUNT)
 
 LLM_MAX_RETRIES = int(os.environ.get("HUMETRIC_LLM_MAX_RETRIES", "3"))
 
@@ -224,7 +233,16 @@ CORS_ALLOWED_ORIGINS = [
 HUMETRIC_MCP_API_KEY = os.environ.get("HUMETRIC_MCP_API_KEY", "")
 
 # Self-service registration (Spec 026)
-REGISTER_RATE_LIMIT_PER_HOUR = int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT", "3"))
+# Enforced by RateLimitMiddleware, keyed by client IP (not tenant_id — this
+# endpoint runs before auth, so no tenant exists yet).
+REGISTER_RATE_LIMIT_PER_HOUR = max(1, int(os.environ.get("HUMETRIC_REGISTER_RATE_LIMIT", "3")) // WORKER_COUNT)
+
+# IP-based brute-force guard on /v1/login (Spec 026 follow-up). No account
+# lockout / no DB tracking (explicit product decision) — purely a per-IP
+# request-rate cap enforced by RateLimitMiddleware. 20/hour per IP allows
+# normal retry-a-typo usage while capping automated credential-stuffing
+# sweeps; tune via env without a redeploy.
+LOGIN_RATE_LIMIT_PER_HOUR = max(1, int(os.environ.get("HUMETRIC_LOGIN_RATE_LIMIT", "20")) // WORKER_COUNT)
 # When false, /register auto-verifies the tenant and returns the API key
 # immediately (no email step). Defaults to requiring verification.
 REQUIRE_EMAIL_VERIFICATION = (

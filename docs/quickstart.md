@@ -144,6 +144,8 @@ entity.metrics.forEach(m => {
 
 :::
 
-<a href="https://app.getpostman.com/run-collection/humetric" target="_blank">
-  <img src="https://run.pstmn.io/button.svg" alt="Run in Postman" />
-</a>
+## Postman
+
+Import [`postman/humetric-collection.json`](https://github.com/bestekarx/humetric/blob/main/postman/humetric-collection.json)
+from the repository (Postman → Import → File). Set the `baseUrl` and `apiKey`
+collection variables and every request is ready to run.

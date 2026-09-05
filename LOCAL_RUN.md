@@ -58,7 +58,22 @@ DATABASE_URL=postgresql+psycopg://humetric:humetric@localhost:5433/humetric
 DATABASE_URL_APP=postgresql+psycopg://humetric_app:humetric_app@localhost:5433/humetric
 ```
 
-> Docker'a geri dönersen bu portları `5434` yap.
+> Docker'a geri dönersen bu portları `5434` yap. Port tablosu:
+> [Portlar](#portlar) — `LOCAL_DB.md` de oraya bakar, sayıyı iki yerde tutmayalım.
+
+### Site'ın veritabanı ayrı
+
+`humetric-site` **kendi PostgreSQL'ini** kullanır (SQLite değil — repodaki
+`data/humetric.db*` ölü kalıntıdır). `humetric-site/backend/.env` içinde ayrı bir
+`DATABASE_URL` gerekir; aynı cluster'da ikinci bir veritabanı yeterlidir:
+
+```bash
+createdb -h 127.0.0.1 -p $PGPORT -O humetric humetric_site
+psql -h 127.0.0.1 -p $PGPORT -U humetric -d humetric_site -f ../humetric-site/backend/schema.sql
+```
+
+Şema Alembic'le yönetilmez: `schema.sql` elle uygulanır, kalan farkları backend
+her boot'ta `runStartupTasks()` ile kapatır.
 
 ## 3. Migration + seed (tek seferlik)
 
@@ -80,7 +95,7 @@ Dört süreç, ayrı ayrı arka planda:
 # humetric worker (Postgres task queue)
 .venv/bin/python -m humetric.worker
 
-# site backend (Express + SQLite) → :3001
+# site backend (Express + kendi Postgres'i) → :3001
 npm --prefix ../humetric-site/backend run dev
 
 # site frontend (Vite) → :5173
@@ -116,7 +131,7 @@ Tarayıcı: **http://localhost:5173**
 | PostgreSQL (brew, pgvector) | 5433 | Docker kullanılırsa 5434 |
 | humetric API | 8002 | `/health` dahil tüm uçlar auth ister |
 | humetric worker | — | port dinlemez |
-| Site backend (Express + SQLite) | 3001 | `HUMETRIC_API_URL=http://localhost:8002` |
+| Site backend (Express) | 3001 | `HUMETRIC_API_URL=http://localhost:8002`, kendi `DATABASE_URL`'i |
 | Site frontend (Vite) | 5173 | `/api` → 3001 proxy |
 
 ## Site'ı canlı API'ye bağlamak

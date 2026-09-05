@@ -73,8 +73,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     request.state.tenant_id, request.url.path,
                 )
                 return await call_next(request)
-        except (SignatureExpired, BadSignature, KeyError, TypeError, ValueError):
-            pass  # fall through to API key check
+        except SignatureExpired:
+            # A well-signed but stale dashboard token is not an API key problem.
+            # Falling through would have it looked up as a key, fail as
+            # "not_found", and reach the caller as "API key is invalid, revoked,
+            # or expired" — which sends the dashboard user hunting for a key
+            # instead of simply signing in again.
+            _log.info("auth: expired dashboard session path=%s", request.url.path)
+            return JSONResponse(
+                status_code=401,
+                content=error_envelope(
+                    "session_expired",
+                    "Dashboard session has expired, please sign in again",
+                ).model_dump(),
+            )
+        except (BadSignature, KeyError, TypeError, ValueError):
+            pass  # not a session token at all — fall through to API key check
 
         # API key path.
         key_prefix = token[:12] if len(token) > 12 else token
