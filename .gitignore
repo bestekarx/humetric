@@ -94,3 +94,4 @@ openapi.json
 # graphify — generated knowledge graph (contains absolute local paths)
 graphify-out/
 .claude/settings.json.graphify-bak
+user_exports/

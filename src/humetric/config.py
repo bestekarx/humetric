@@ -10,7 +10,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ROOT = Path(__file__).resolve().parents[3]
+# config.py lives at <root>/src/humetric/, so the project root is three
+# directories up from the file, not four. parents[3] resolved to "/" in the
+# prod image (/app/src/humetric/config.py), which made USER_EXPORT_LOCAL_DIR
+# "/user_exports" — unwritable for the non-root humetric user, so every data
+# export died on mkdir with EACCES.
+ROOT = Path(__file__).resolve().parents[2]
 LOGS_DIR = ROOT / "logs"
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
