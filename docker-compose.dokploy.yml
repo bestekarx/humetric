@@ -89,7 +89,7 @@ services:
       - "traefik.http.routers.humetric-api.tls.certresolver=letsencrypt"
       - "traefik.http.services.humetric-api.loadbalancer.server.port=8002"
 
-  # Real-time worker: signal pipeline + re-embed + nightly export.
+  # Real-time worker: signal pipeline + re-embed + nightly export + user data export.
   worker:
     build:
       context: .
@@ -106,7 +106,11 @@ services:
       # tenant isolation is applied via the GUC + explicit tenant filters.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-humetric}:${POSTGRES_PASSWORD:-humetric}@db:5432/${POSTGRES_DB:-humetric}
       DATABASE_URL_APP: postgresql+psycopg://${APP_DB_USER:-humetric_app}:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD (humetric_app role password) in Dokploy env}@db:5432/${POSTGRES_DB:-humetric}
-      HUMETRIC_WORKER_TASK_TYPES: signal_process,re_embed,lakehouse_export
+      # Must list every task_type worker.py dispatches: an omitted type is
+      # never claimed, so its rows sit queued forever. export_request was
+      # missing, which left /v1/tenant/export answering 409 for good once
+      # the first request had been queued.
+      HUMETRIC_WORKER_TASK_TYPES: signal_process,re_embed,lakehouse_export,export_request
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY}
       HUMETRIC_AUTH_SECRET: ${HUMETRIC_AUTH_SECRET}
@@ -117,6 +121,16 @@ services:
       # config.py:MAX_TOKENS.
       HUMETRIC_MAX_TOKENS: ${HUMETRIC_MAX_TOKENS:-8192}
       HUMETRIC_MAX_METRICS_PER_PACK: ${HUMETRIC_MAX_METRICS_PER_PACK:-7}
+      # The user data export is emailed from the worker, not the api, so the
+      # SMTP credentials have to reach this container too. Without them
+      # send_email_with_attachment takes its "SMTP not configured" branch,
+      # logs the mail and reports success, so the export completes without
+      # ever leaving the server.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-hello@gethumetric.com}
     healthcheck:
       test: ["CMD", "python", "-c", "import os,sys,time; p='/tmp/humetric_worker_heartbeat'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p)<300 else 1)"]
       interval: 30s
