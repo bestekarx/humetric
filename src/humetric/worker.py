@@ -408,18 +408,13 @@ async def process_export_request_task(db: AsyncSession, task) -> None:
             for f in tmp_path.iterdir():
                 zf.write(f, arcname=f.name)
 
-    from .services.email_service import send_email_with_attachment
+    from .services.email_service import send_export_ready_email
 
-    sent = await send_email_with_attachment(
+    sent = await send_export_ready_email(
         to_email=export.recipient_email,
-        subject="Your HuMetric data export is ready",
-        html_body=(
-            "<p>Your requested data export is attached as a zip file. "
-            "It will be kept on our servers for "
-            f"{config.USER_EXPORT_RETENTION_DAYS} days and then deleted.</p>"
-        ),
-        attachment_path=zip_path,
-        attachment_filename=zip_name,
+        zip_path=zip_path,
+        zip_name=zip_name,
+        retention_days=config.USER_EXPORT_RETENTION_DAYS,
     )
     if not sent:
         raise RuntimeError("Failed to send export email")
