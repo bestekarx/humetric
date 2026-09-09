@@ -41,7 +41,9 @@ jobs:
           if [ -d tests ] && [ -n "$(find tests -name 'test_*.py' -o -name '*_test.py' 2>/dev/null | head -1)" ]; then
             pytest --timeout=30 -x
           else
-            echo "No test files found (tests/ is gitignored in this repo). Skipping."
+            echo "No test files found (tests/ is gitignored here); running the import smoke check instead."
+            python -c "import humetric.api, humetric.worker, humetric.batch_worker, humetric.mcp_server, humetric.generator; print('import smoke ok')"
+            python -c "from humetric.api import app; routes = [r.path for r in app.routes]; assert '/healthz' in routes, routes; print(len(routes), 'routes registered')"
           fi
         env:
           DATABASE_URL: postgresql+psycopg://humetric:humetric@localhost:5432/humetric

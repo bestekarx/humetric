@@ -37,13 +37,23 @@ async def _run_extraction(
     entity_context: str,
     pack_prompt: str | None = None,
     pack_metrics: list[dict] | None = None,
+    provider: str | None = None,
 ) -> tuple[list[ExtractedMetric], dict]:
+    """Run one extraction for the harness.
+
+    The harness has no tenant context, so the provider comes from --provider and
+    its key from the platform-level environment settings. Passing neither keeps
+    the previous behaviour: extract_metrics() falls back to its own default.
+    """
     call_meta: dict = {}
+    api_key = config.get_platform_api_key(provider) if provider else None
     extracted = await extractor.extract_metrics(
         signal_text,
         entity_context,
         pack_prompt=pack_prompt,
         pack_metrics=pack_metrics,
+        provider=provider,
+        api_key=api_key or None,
         call_meta=call_meta,
     )
     return extracted, call_meta
@@ -162,7 +172,9 @@ def _check_curation(expected: dict, final_list: list[FinalMetric], extracted_lis
     return results
 
 
-async def _replay_canary(canary: dict, pack_def: dict | None = None) -> dict:
+async def _replay_canary(
+    canary: dict, pack_def: dict | None = None, provider: str | None = None,
+) -> dict:
     signals = canary.get("signals", [])
     pack_prompt = None
     pack_metrics = None
@@ -190,7 +202,7 @@ async def _replay_canary(canary: dict, pack_def: dict | None = None) -> dict:
         context_hash = hash_text(entity_context)
 
         extracted, extract_meta = await _run_extraction(
-            signal_text, entity_context, pack_prompt, pack_metrics,
+            signal_text, entity_context, pack_prompt, pack_metrics, provider,
         )
         final_metrics, curator_meta = await _run_curation(
             extracted, entity_context, pack_def,
@@ -427,7 +439,7 @@ async def _main(args: argparse.Namespace) -> int:
         prev = json.loads(output_path.read_text(encoding="utf-8"))
         canary = _load_canary(canary_path)
         pack_def = _load_pack_definition(args.pack) if args.pack else canary.get("pack_definition", {}) if isinstance(canary.get("pack_definition"), dict) else {}
-        current = await _replay_canary(canary, pack_def)
+        current = await _replay_canary(canary, pack_def, args.provider)
         comparison = _compare_runs(prev, current)
         if args.output:
             report_path = Path(args.output)
@@ -451,7 +463,7 @@ async def _main(args: argparse.Namespace) -> int:
 
     canary = _load_canary(canary_path)
     pack_def = _load_pack_definition(args.pack) if args.pack else {}
-    report = await _replay_canary(canary, pack_def)
+    report = await _replay_canary(canary, pack_def, args.provider)
 
     if output_path:
         if not output_path.parent.exists():
@@ -482,6 +494,12 @@ def main():
     parser.add_argument("--ci", action="store_true", help="CI mode: exit 1 on drift")
     parser.add_argument("--max-drift", type=int, default=3, help="Max allowed drift in CI mode")
     parser.add_argument("--compare-run", action="store_true", help="Compare current run against previous --output report")
+    parser.add_argument(
+        "--provider",
+        choices=("anthropic", "openai", "google", "deepseek"),
+        help="LLM provider for this run. Defaults to the extractor's own default; "
+             "the key is read from the platform environment settings.",
+    )
     args = parser.parse_args()
 
     import asyncio

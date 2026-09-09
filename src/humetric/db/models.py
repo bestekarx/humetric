@@ -371,6 +371,13 @@ class LlmCallRecord(Base):
     provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
     model: Mapped[str | None] = mapped_column(String(128), nullable=True)
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Split of token_count, which keeps its own meaning and readers. NULL means
+    # the provider did not report that kind -- never a computed or guessed value
+    # (migration 023).
+    input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_read_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_write_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_now
     )

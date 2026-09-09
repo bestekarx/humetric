@@ -165,7 +165,15 @@ async def structured_call(
         raise
 
     latency_ms = int((time.perf_counter() - t0) * 1000)
-    total_tokens = (resp.usage.input_tokens if resp.usage else 0) + (resp.usage.output_tokens if resp.usage else 0)
+    usage = resp.usage if resp.usage else None
+    # Read each token kind separately. getattr with a None default, not 0: an
+    # SDK version that does not carry a cache field must record NULL, which
+    # means "not reported" -- 0 would claim the cache was measured and missed.
+    input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None)
+    cache_read_tokens = getattr(usage, "cache_read_input_tokens", None)
+    cache_write_tokens = getattr(usage, "cache_creation_input_tokens", None)
+    total_tokens = (input_tokens or 0) + (output_tokens or 0)
     telemetry.log_call(agent=tool_name, model=model, usage=resp.usage, latency_ms=latency_ms)
 
     if tenant_id is not None:
@@ -176,6 +184,9 @@ async def structured_call(
                     tenant_id, total_tokens,
                     signal_id=signal_id, pack_key=pack_key, pack_version=pack_version,
                     provider=provider or "anthropic", model=model,
+                    input_tokens=input_tokens, output_tokens=output_tokens,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_write_tokens,
                 )
         except Exception:
             _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)
@@ -290,10 +301,21 @@ async def record_batch_usage(messages, tenant_id: int | None) -> None:
         usage = getattr(msg, "usage", None)
         if not usage:
             continue
-        tokens = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+        # Same split as the synchronous path: the batch API returns the same
+        # Usage shape, so a batch-processed signal is measurable exactly like a
+        # realtime one. Without this the granular row below would leave the
+        # token columns NULL, which reads as "the provider does not report
+        # this" rather than "we did not record it".
+        breakdown = {
+            "input_tokens": getattr(usage, "input_tokens", None),
+            "output_tokens": getattr(usage, "output_tokens", None),
+            "cache_read_tokens": getattr(usage, "cache_read_input_tokens", None),
+            "cache_write_tokens": getattr(usage, "cache_creation_input_tokens", None),
+        }
+        tokens = (breakdown["input_tokens"] or 0) + (breakdown["output_tokens"] or 0)
         total += tokens
         if ctx is not None and tokens > 0:
-            granular.append((tokens, ctx))
+            granular.append((tokens, ctx, breakdown))
 
     if total <= 0:
         return
@@ -304,7 +326,7 @@ async def record_batch_usage(messages, tenant_id: int | None) -> None:
     except Exception:
         _log.exception("Failed to record batch LLM tokens for tenant %d", tenant_id)
 
-    for tokens, ctx in granular:
+    for tokens, ctx, breakdown in granular:
         try:
             from ..services.usage_service import _insert_llm_call_record
             from ..db.database import get_sync_engine
@@ -319,6 +341,7 @@ async def record_batch_usage(messages, tenant_id: int | None) -> None:
                 provider=ctx.get("llm_provider") or "anthropic",
                 model=ctx.get("extract_meta", {}).get("model"),
                 token_count=tokens,
+                **breakdown,
             )
         except Exception:
             _log.exception(

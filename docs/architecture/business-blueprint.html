@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HuMetric Business Blueprint</title>
+<!--
+  Repo-içi mimari referansı — docs/architecture/overview.md § "İş katmanları — büyük resim"
+  bölümünün Mermaid kaynağıyla birebir aynı diyagramları taşıyan, tek dosyalık statik sayfa.
+  Yayınlanan VitePress sitesine dahil değildir (overview.md gibi srcExclude altındadır).
+  Kaynağa güven: içerik burada satır-satır bakımlı değildir, overview.md kanoniktir.
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+:root{
+  --bg:#eef2f6;
+  --surface:#ffffff;
+  --surface-2:#e4eaf1;
+  --ink:#10233d;
+  --ink-dim:#3d5470;
+  --muted:#5b6b80;
+  --line:#b9c6d6;
+  --line-strong:#8fa2ba;
+  --accent:#c85a1b;
+  --accent-soft:#f2dfce;
+  --data:#1f7a5c;
+  --font-display:"IBM Plex Sans",system-ui,sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a1a2c;
+    --surface:#102842;
+    --surface-2:#0d2138;
+    --ink:#dfe9f5;
+    --ink-dim:#a9bcd2;
+    --muted:#8199b3;
+    --line:#28405c;
+    --line-strong:#3a577a;
+    --accent:#f0985a;
+    --accent-soft:#3a2a1c;
+    --data:#5fcba0;
+  }
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:
+    linear-gradient(var(--bg),var(--bg)),
+    repeating-linear-gradient(0deg, transparent, transparent 27px, var(--line) 27px, var(--line) 28px),
+    repeating-linear-gradient(90deg, transparent, transparent 27px, var(--line) 27px, var(--line) 28px);
+  background-blend-mode: normal, soft-light, soft-light;
+  color:var(--ink);
+  font-family:var(--font-display);
+  line-height:1.5;
+}
+img{max-width:100%;}
+::selection{background:var(--accent-soft);color:var(--ink);}
+
+.wrap{max-width:1080px;margin:0 auto;padding:56px 28px 96px;}
+
+header.hero{
+  display:flex;flex-direction:column;gap:14px;
+  padding-bottom:32px;margin-bottom:40px;
+  border-bottom:2px solid var(--line-strong);
+}
+.eyebrow{
+  font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent);font-weight:600;
+}
+h1{
+  font-size:clamp(30px,4.2vw,44px);margin:0;font-weight:700;
+  letter-spacing:-.01em;text-wrap:balance;
+}
+.subtitle{max-width:62ch;color:var(--ink-dim);font-size:16.5px;margin:0;}
+.meta-row{
+  display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:8px;
+  font-family:var(--font-mono);font-size:12.5px;color:var(--muted);
+}
+.meta-row span b{color:var(--ink-dim);font-weight:600;}
+
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px;}
+.legend-chip{
+  display:flex;align-items:center;gap:7px;
+  font-family:var(--font-mono);font-size:12px;color:var(--ink-dim);
+  background:var(--surface);border:1px solid var(--line);
+  padding:5px 10px 5px 8px;border-radius:3px;
+}
+.legend-dot{width:9px;height:9px;border-radius:2px;flex:none;}
+
+section{margin-bottom:56px;}
+.section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px;}
+.section-num{font-family:var(--font-mono);color:var(--accent);font-weight:600;font-size:14px;}
+h2{font-size:22px;margin:0;font-weight:600;letter-spacing:-.005em;}
+.section-desc{color:var(--muted);font-size:14.5px;max-width:70ch;margin:8px 0 22px;}
+
+.plate{
+  position:relative;background:var(--surface);
+  border:1px solid var(--line-strong);border-radius:6px;
+  padding:26px 22px 18px;overflow-x:auto;
+}
+.plate .tick-tr{position:absolute;top:-1px;right:-1px;width:16px;height:16px;border-top:2px solid var(--line-strong);border-right:2px solid var(--line-strong);}
+.plate .tick-bl{position:absolute;bottom:-1px;left:-1px;width:16px;height:16px;border-bottom:2px solid var(--line-strong);border-left:2px solid var(--line-strong);}
+
+.plate .mermaid{background:transparent;display:flex;justify-content:center;}
+
+.plate-cap{
+  display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;
+  margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);
+  font-family:var(--font-mono);font-size:12px;color:var(--muted);
+}
+.plate-cap b{color:var(--ink-dim);font-weight:600;}
+
+.flow-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;}
+
+.callout{
+  background:var(--surface-2);border:1px solid var(--line);
+  border-left:3px solid var(--accent);
+  border-radius:4px;padding:18px 20px;
+  font-size:14.5px;color:var(--ink-dim);
+}
+.callout b{color:var(--ink);}
+.callout code{
+  font-family:var(--font-mono);font-size:13px;
+  background:var(--surface);border:1px solid var(--line);
+  padding:1px 5px;border-radius:3px;color:var(--ink);
+}
+
+footer{
+  border-top:1px solid var(--line);padding-top:18px;
+  font-family:var(--font-mono);font-size:12px;color:var(--muted);
+  display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Sistem Şeması · HuMetric + humetric-site</div>
+  <h1>Business Blueprint</h1>
+  <p class="subtitle">
+    İki repo, tek sistem: müşteriye dönük site (<code style="font-family:var(--font-mono)">humetric-site</code>)
+    ve açık kaynak motor (<code style="font-family:var(--font-mono)">humetric</code>) nasıl bağlanıyor,
+    bir istek hangi katmandan geçiyor ve üç temel iş akışı (sinyal işleme, ajan oturumu, sorgu)
+    ne şekilde ilerliyor.
+  </p>
+  <div class="meta-row">
+    <span><b>Kaynak</b> — docs/architecture/{overview,pipeline,site}.md</span>
+    <span><b>Kapsam</b> — business/iş katmanları, uçtan uca akış</span>
+    <span><b>İlişkili</b> — specs/001-context-engineering-cost/plan.md</span>
+  </div>
+  <div class="legend">
+    <div class="legend-chip"><span class="legend-dot" style="background:var(--muted)"></span>İstemci</div>
+    <div class="legend-chip"><span class="legend-dot" style="background:var(--accent)"></span>Site iş katmanı</div>
+    <div class="legend-chip"><span class="legend-dot" style="background:var(--ink)"></span>Motor iş katmanı</div>
+    <div class="legend-chip"><span class="legend-dot" style="background:var(--data)"></span>Veri / dış sağlayıcı</div>
+  </div>
+</header>
+
+<section>
+  <div class="section-head"><span class="section-num">01</span><h2>Katmanlar — ne nereye bağlı</h2></div>
+  <p class="section-desc">
+    Altı katman: istemciler → site iş katmanı (oturum, ajanlar, kredi) → motor API katmanı
+    (doğrulama + kuyruk) → motor iş mantığı (worker + agent'lar) → veri katmanı → dış
+    sağlayıcılar. Motor MCP'si veritabanına hiç dokunmaz; REST API'nin saf HTTP istemcisidir.
+  </p>
+  <div class="plate">
+    <span class="tick-tr"></span><span class="tick-bl"></span>
+    <pre class="mermaid">
+graph TB
+    subgraph L0["Katman 0 — İstemciler"]
+        BR["Tarayıcı — React SPA"]
+        MCPC["MCP istemcisi"]
+        APIC["Doğrudan API — SDK / n8n / curl"]
+    end
+
+    subgraph L1["Katman 1 — Site iş katmanı — humetric-site, ayrı repo"]
+        EXP["Express :3001 — oturum, proxy, paylaşım"]
+        WIZ["Pack Wizard ajanı — Site MCP"]
+        CHAT["Signal Chat ajanı — Site MCP"]
+        BILL["billing.ts — kredi düşümü"]
+    end
+    SPG[("Site Postgres — kullanıcı, BYOK anahtar, kredi")]
+
+    subgraph L2["Katman 2 — Motor API katmanı — humetric"]
+        FAPI["FastAPI :8002 — doğrulama, kuyruğa yaz"]
+        EMCP["Motor MCP — stdio, saf HTTP istemcisi"]
+    end
+
+    subgraph L3["Katman 3 — Motor iş mantığı — arka plan"]
+        WRK["worker.py"]
+        BWRK["batch_worker.py"]
+        EXT["extractor — tek LLM çağrısı"]
+        CUR["curator — deterministik birleştirme"]
+        RANK["ranker — opsiyonel"]
+    end
+    PG[("Motor Postgres + pgvector — RLS'li 14 tablo")]
+
+    subgraph L5["Dış sağlayıcılar"]
+        LLM["LLM — BYOK"]
+        EMB["Embedding sağlayıcı"]
+        STR["Stripe"]
+        SMTP["SMTP"]
+    end
+
+    BR --> EXP
+    MCPC --> WIZ
+    MCPC --> CHAT
+    MCPC --> EMCP
+    APIC --> FAPI
+
+    EXP --> FAPI
+    WIZ --> BILL --> SPG
+    CHAT --> BILL
+    WIZ --> FAPI
+    CHAT --> FAPI
+    EMCP --> FAPI
+    EXP --> SPG
+    WIZ --> LLM
+    CHAT --> LLM
+    EXP --> STR
+    EXP --> SMTP
+
+    FAPI --> PG
+    FAPI -. kuyruk .-> WRK
+    WRK --> BWRK
+    WRK --> EXT --> LLM
+    EXT --> CUR --> PG
+    FAPI -. opsiyonel .-> RANK --> LLM
+    WRK --> EMB
+    WRK --> PG
+    </pre>
+    <div class="plate-cap">
+      <span><b>Kritik sınır</b> — iki Postgres arasında FK yok; <code>users.tenant_id</code> ile eşleşme dışında bağlantı kurulmaz.</span>
+      <span>overview.md §Topoloji</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head"><span class="section-num">02</span><h2>Üç ana iş akışı — işlemler nasıl gidiyor</h2></div>
+  <p class="section-desc">
+    Aynı sistemin üç farklı işlemi üç farklı yoldan geçiyor: biri kuyruklu ve asenkron,
+    biri ajan turlu ve ücretli, biri senkron ve opsiyonel LLM'li.
+  </p>
+
+  <div class="flow-grid">
+    <div class="plate">
+      <span class="tick-tr"></span><span class="tick-bl"></span>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent);margin-bottom:8px;">AKIŞ A — Sinyal işleme</div>
+      <pre class="mermaid">
+flowchart TD
+    C1["İstemci"] -->|"POST /v1/signals"| A1["api.py<br/>doğrula + kuyruğa al · 202"]
+    A1 --> Q1[("task tablosu")]
+    Q1 --> W1["worker.py"]
+    W1 --> E1["extractor.py<br/>tek LLM çağrısı"]
+    E1 --> CU1["curator.py<br/>deterministik birleştirme"]
+    CU1 --> K1{"KVKK rızası<br/>var mı?"}
+    K1 -->|hayır| SK1["atla — hiç yazılmaz"]
+    K1 -->|evet| SP1{"source_span<br/>doğrulandı mı?"}
+    SP1 -->|hayır| PR1["review_status =<br/>pending_review"]
+    SP1 -->|evet| OK1["doğrudan yaz"]
+    PR1 --> DB1[("entity_metric<br/>+ history")]
+    OK1 --> DB1
+    DB1 --> EM1["embedding güncelle"]
+      </pre>
+      <div class="plate-cap"><span>tek LLM çağrısı</span><span>asenkron</span></div>
+    </div>
+
+    <div class="plate">
+      <span class="tick-tr"></span><span class="tick-bl"></span>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent);margin-bottom:8px;">AKIŞ B — Ajan oturumu</div>
+      <pre class="mermaid">
+flowchart TD
+    C2["Tarayıcı / MCP istemcisi"] -->|"start"| S2["Site MCP<br/>Wizard veya Signal Chat"]
+    S2 --> B2["kredi düşümü<br/>billing.ts"]
+    B2 --> L2["ajan turu<br/>LLM çağrısı"]
+    L2 -->|"entity / signal / metric<br/>oku-yaz"| API2["Motor /v1/*"]
+    API2 --> PG2[("Motor Postgres")]
+    L2 --> SSE2["agent_events<br/>→ SSE akışı"]
+    SSE2 --> C2
+      </pre>
+      <div class="plate-cap"><span>çok turlu, ücretli</span><span>site repo</span></div>
+    </div>
+
+    <div class="plate">
+      <span class="tick-tr"></span><span class="tick-bl"></span>
+      <div style="font-family:var(--font-mono);font-size:12px;color:var(--accent);margin-bottom:8px;">AKIŞ C — Sorgu / okuma</div>
+      <pre class="mermaid">
+flowchart TD
+    C3["Tarayıcı"] -->|"GET /api/..."| PX3["proxy.ts<br/>kimlik kendi kendini onarır"]
+    PX3 -->|"Bearer hm_live_"| API3["Motor /v1/query"]
+    API3 --> H3["hibrit arama<br/>vektör + tam metin"]
+    H3 --> R3{"rerank = true?"}
+    R3 -->|evet| RK3["ranker.py — LLM"]
+    R3 -->|hayır| SK3["hibrit skorla dön"]
+    RK3 --> RESP3["QueryResponse"]
+    SK3 --> RESP3
+    RESP3 --> PX3 --> C3
+      </pre>
+      <div class="plate-cap"><span>senkron</span><span>LLM opsiyonel</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="section-head"><span class="section-num">03</span><h2>Bu resim nereden geliyor</h2></div>
+  <div class="callout">
+    Bu üç diyagram <code>docs/architecture/overview.md</code>, <code>pipeline.md</code> ve
+    <code>site.md</code>'deki mevcut anlatının bir araya getirilmiş hâli — yeni bir mimari
+    değil, var olan üç ayrı belgenin tek bir "büyük resim" olarak okunması. <b>Katman 1</b>'deki
+    kredi/ajan detayları ve <b>Katman 3</b>'teki curator'ın artık LLM olmadığı gibi noktalar
+    zaten kodda doğrulanmış gerçekler. <code>specs/001-context-engineering-cost/plan.md</code>
+    bu resmin tam olarak <b>Katman 2 ↔ Katman 3</b> sınırındaki tek bir hücreye — extraction
+    çağrısının bağlamına ve cache'ine — odaklanıyor; geri kalan her şey bu turda değişmeden
+    kalıyor.
+  </div>
+</section>
+
+<footer>
+  <span>humetric (motor) + humetric-site (site) — iki repo, tek sistem</span>
+  <span>güncel kaynak: docs/architecture/overview.md</span>
+</footer>
+
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default",
+    securityLevel: "strict"
+  });
+</script>
+</body>
+</html>

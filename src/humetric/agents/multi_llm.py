@@ -294,9 +294,25 @@ async def _call_openai(
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
         usage = resp.usage
-        total_tokens = (usage.prompt_tokens if usage else 0) + (
-            usage.completion_tokens if usage else 0
-        )
+        input_tokens = getattr(usage, "prompt_tokens", None)
+        output_tokens = getattr(usage, "completion_tokens", None)
+        # Cache reporting differs between the two providers sharing this branch,
+        # so resolve it per provider rather than assuming a shared SDK implies
+        # shared fields. Both were checked against a live response:
+        #   deepseek -> usage.prompt_cache_hit_tokens (cache writes not reported)
+        #   openai   -> usage.prompt_tokens_details.cached_tokens (unverified)
+        # prompt_tokens already includes the cached part on DeepSeek, so the hit
+        # count is recorded alongside it, never subtracted from it.
+        cache_read_tokens = None
+        if usage is not None:
+            if provider == "deepseek":
+                cache_read_tokens = getattr(usage, "prompt_cache_hit_tokens", None)
+            else:
+                details = getattr(usage, "prompt_tokens_details", None)
+                cache_read_tokens = getattr(details, "cached_tokens", None)
+        # Neither provider reports a cache *write* count.
+        cache_write_tokens = None
+        total_tokens = (input_tokens or 0) + (output_tokens or 0)
         _log.debug("OpenAI call model=%s tokens=%d latency=%dms", model, total_tokens, latency_ms)
 
         # A re-ask is a real billable call, so meter it like any other.
@@ -307,6 +323,9 @@ async def _call_openai(
                     tenant_id, total_tokens,
                     signal_id=signal_id, pack_key=pack_key, pack_version=pack_version,
                     provider=provider, model=model,
+                    input_tokens=input_tokens, output_tokens=output_tokens,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_write_tokens,
                 )
             except Exception:
                 _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)
@@ -416,12 +435,18 @@ async def _call_google(
             resp = await asyncio.to_thread(lambda: model_obj.generate_content(contents))
         latency_ms = int((time.perf_counter() - t0) * 1000)
 
-        total_tokens = 0
+        input_tokens = output_tokens = cache_read_tokens = None
         if hasattr(resp, "usage_metadata") and resp.usage_metadata:
             m = resp.usage_metadata
-            total_tokens = (getattr(m, "prompt_token_count", 0) or 0) + (
-                getattr(m, "candidates_token_count", 0) or 0
-            )
+            input_tokens = getattr(m, "prompt_token_count", None)
+            output_tokens = getattr(m, "candidates_token_count", None)
+            # Verified against a live response: this field is present on every
+            # reply and is 0 when the implicit cache did not hit. That 0 is a
+            # real measurement, so it is stored as 0 -- not coerced to NULL.
+            cache_read_tokens = getattr(m, "cached_content_token_count", None)
+        # No cache-write count is reported.
+        cache_write_tokens = None
+        total_tokens = (input_tokens or 0) + (output_tokens or 0)
         _log.debug(
             "Google AI call model=%s tokens=%d latency=%dms", model, total_tokens, latency_ms,
         )
@@ -433,6 +458,9 @@ async def _call_google(
                     tenant_id, total_tokens,
                     signal_id=signal_id, pack_key=pack_key, pack_version=pack_version,
                     provider=provider, model=model,
+                    input_tokens=input_tokens, output_tokens=output_tokens,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_write_tokens,
                 )
             except Exception:
                 _log.exception("Failed to record LLM tokens for tenant %d", tenant_id)

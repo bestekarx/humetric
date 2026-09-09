@@ -39,7 +39,6 @@ why (intentional, not an oversight):
 from __future__ import annotations
 
 import argparse
-import asyncio
 import contextvars
 import json
 import logging

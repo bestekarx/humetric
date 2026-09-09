@@ -72,6 +72,10 @@ def _insert_llm_call_record(
     provider: str | None,
     model: str | None,
     token_count: int,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cache_read_tokens: int | None = None,
+    cache_write_tokens: int | None = None,
 ) -> None:
     with sync_engine.begin() as conn:
         conn.execute(
@@ -83,6 +87,10 @@ def _insert_llm_call_record(
                 provider=provider,
                 model=model,
                 token_count=token_count,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
             )
         )
 
@@ -96,10 +104,22 @@ async def record_llm_tokens(
     pack_version: int | None = None,
     provider: str | None = None,
     model: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cache_read_tokens: int | None = None,
+    cache_write_tokens: int | None = None,
 ) -> None:
     """Record LLM token usage: always the daily tenant total, plus a granular
     llm_call_record row whenever the call is attributable to a signal or pack
-    (i.e. a real pipeline call, not some other token-spending path)."""
+    (i.e. a real pipeline call, not some other token-spending path).
+
+    ``count`` keeps its meaning -- the input+output total written to
+    ``token_count``. The four optional kwargs split that total apart and are
+    passed straight through from the provider response. A caller that cannot
+    read a field passes ``None``; it must never substitute 0 or a computed
+    value, because NULL is what distinguishes "the provider does not report
+    this" from "the provider reported zero" (migration 023).
+    """
     await _upsert_usage_async(tenant_id, date.today(), llm_token_count=count)
     if signal_id or pack_key:
         engine = get_sync_engine()
@@ -113,6 +133,10 @@ async def record_llm_tokens(
             provider=provider,
             model=model,
             token_count=count,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_write_tokens,
         )
 
 

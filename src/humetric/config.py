@@ -21,6 +21,12 @@ LOGS_DIR = ROOT / "logs"
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 DATABASE_URL_APP = os.environ.get("DATABASE_URL_APP", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+DEEPSEEK_API_KEY = os.environ.get("HUMETRIC_DEEPSEEK_API_KEY", "") or os.environ.get(
+    "DEEPSEEK_API_KEY", ""
+)
+GOOGLE_AI_API_KEY = os.environ.get("HUMETRIC_GOOGLE_AI_API_KEY", "") or os.environ.get(
+    "GOOGLE_AI_API_KEY", ""
+)
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
 AUTH_SECRET = os.environ.get("HUMETRIC_AUTH_SECRET", "")
 HUMETRIC_ENCRYPTION_KEY = os.environ.get("HUMETRIC_ENCRYPTION_KEY", "")
@@ -36,6 +42,34 @@ COHERE_API_KEY = os.environ.get("HUMETRIC_COHERE_API_KEY", "") or os.environ.get
 EMBED_DIM_VOYAGE = int(os.environ.get("HUMETRIC_EMBED_DIM_VOYAGE", "1024"))
 EMBED_DIM_OPENAI = int(os.environ.get("HUMETRIC_EMBED_DIM_OPENAI", "1536"))
 EMBED_DIM_COHERE = int(os.environ.get("HUMETRIC_EMBED_DIM_COHERE", "1024"))
+
+# --- Context engineering / cost accounting (spec 001) ---
+# Extraction input token budget. Over-budget signals are still processed in full
+# and flagged for review -- never truncated, never dropped (FR-005/FR-006).
+EXTRACT_INPUT_TOKEN_BUDGET = int(
+    os.environ.get("HUMETRIC_EXTRACT_INPUT_TOKEN_BUDGET", "32000")
+)
+# Characters-per-token divisor for the local, deterministic estimate in context.py.
+# Calibrated offline by scripts/calibrate_token_estimate.py against recorded data;
+# no provider count endpoint is called at request time (FR-003/FR-004).
+#
+# The default is 1.9, the value scripts/cost_bench.py already measured for Turkish
+# text against reported provider usage. English prose runs closer to 4.0 (measured:
+# the 2985-character English extractor system prompt counted 734 tokens), so a
+# single divisor cannot be right for both. 1.9 is chosen deliberately because it is
+# the conservative end: signal text dominates a large extraction context and is the
+# Turkish half, and an over-estimate trips the budget gate early rather than late.
+TOKEN_ESTIMATE_CHARS_PER_TOKEN = float(
+    os.environ.get("HUMETRIC_TOKEN_ESTIMATE_CHARS_PER_TOKEN", "1.9")
+)
+# One single threshold, deliberately not a per-provider table: thresholds move
+# with the model and are not monotonic, so a table goes stale silently. The
+# default is the most conservative (highest) known value; a deployment lowers it
+# for its own model. A provider that caches below it produces a false-positive
+# WARNING, which is advisory only and never blocks a call (FR-011).
+MIN_CACHEABLE_PREFIX_TOKENS = int(
+    os.environ.get("HUMETRIC_MIN_CACHEABLE_PREFIX_TOKENS", "4096")
+)
 
 WORKER_POLL_INTERVAL_S = float(os.environ.get("HUMETRIC_WORKER_POLL_INTERVAL_S", "1"))
 WORKER_BATCH_SIZE = int(os.environ.get("HUMETRIC_WORKER_BATCH_SIZE", "5"))
@@ -77,6 +111,22 @@ ENABLED_LLM_PROVIDERS = [
     ).split(",")
     if p.strip()
 ]
+
+
+def get_platform_api_key(provider: str) -> str:
+    """Platform-level key for a provider, used when no tenant BYOK key applies.
+
+    Runtime request paths resolve the tenant's own encrypted key first; this is
+    the fallback for tooling that has no tenant context (the replay harness,
+    offline scripts). Returns "" when the provider has no platform key set.
+    """
+    if provider == "openai":
+        return OPENAI_API_KEY
+    if provider == "google":
+        return GOOGLE_AI_API_KEY
+    if provider == "deepseek":
+        return DEEPSEEK_API_KEY
+    return ANTHROPIC_API_KEY
 
 
 def get_extractor_model(provider: str) -> str:

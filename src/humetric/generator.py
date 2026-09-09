@@ -28,8 +28,7 @@ Usage (as module):
 from __future__ import annotations
 
 import random
-import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 

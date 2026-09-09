@@ -132,8 +132,8 @@ Consent is checked per-metric, per-entity at query time. Revoking consent immedi
 ### Prerequisites
 - Docker & Docker Compose
 - Python 3.11+
-- Anthropic API key
-- Voyage AI API key
+- An LLM provider key — Anthropic, OpenAI, Google AI, or DeepSeek
+- An embedding provider key — Voyage AI, OpenAI, or Cohere
 
 ### Setup
 
@@ -142,7 +142,8 @@ Consent is checked per-metric, per-entity at query time. Revoking consent immedi
 git clone https://github.com/bestekarx/humetric.git
 cd humetric
 cp .env.example .env
-# Edit .env: add ANTHROPIC_API_KEY, VOYAGE_API_KEY, and set HUMETRIC_AUTH_SECRET
+# Edit .env: add your LLM and embedding provider keys (ANTHROPIC_API_KEY,
+# VOYAGE_API_KEY by default) and set HUMETRIC_AUTH_SECRET
 
 # Start the database and worker
 docker compose up -d
@@ -223,7 +224,11 @@ curl -X POST "$BASE/query" \
 | Embedding | Voyage AI / OpenAI / Cohere (abstracted) |
 | Queue | PostgreSQL (SELECT FOR UPDATE SKIP LOCKED) |
 | Observability | Prometheus metrics, JSONL telemetry |
-| MCP | stdio + SSE transport |
+| MCP | stdio + SSE + streamable-HTTP transport |
+
+Mermaid diagrams of the pipeline, data model, and deployment topology live in
+[`docs/architecture/`](docs/architecture/overview.md) — they render on GitHub
+and are excluded from the published docs site.
 
 ## MCP Server
 
@@ -289,19 +294,32 @@ python -m humetric.batch_worker
 docker compose -f docker-compose.dokploy.yml --profile backfill run --rm batch-backfill
 ```
 
+Only tenants on the Anthropic provider go through the Batches API; tenants on
+OpenAI, Google, or DeepSeek fall back to synchronous per-signal calls, since
+none of those expose an equivalent batch endpoint here — their provider choice
+is still honoured.
+
 Tasks stuck in `processing` by a crashed run are reclaimed on the next start.
 Curation itself is a deterministic confidence-weighted merge (see
 `agents/curator.py:finalize_merge`), not an LLM call — only extraction runs
 through the Batches API here.
 
+Pass `--weekly` for historical loads: waves are claimed one time window at a
+time (by `signal.occurred_at`), at most one signal per entity per wave, so each
+wave reconciles against the previous one and metric history gets one ordered
+point per window. Without it, several signals for the same entity inside one
+batch all see the pre-batch snapshot and the last write wins.
+
 ## BYO-Key (Bring Your Own Keys)
 
-Tenants can use their own Anthropic and Voyage API keys instead of the platform keys. Keys are encrypted at rest with AES-256-GCM.
+Tenants can use their own provider keys instead of the platform keys. Keys are
+encrypted at rest with AES-256-GCM.
 
-**Multi-provider (beta-locked):** the key store and agent pipeline also
-support OpenAI, Google AI, and DeepSeek per-tenant keys. During the beta only
-Anthropic is enabled; flip on more providers with
-`HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic,openai,google,deepseek`.
+**All four LLM providers are enabled by default** — Anthropic, OpenAI, Google
+AI, and DeepSeek. Narrow the list with
+`HUMETRIC_ENABLED_LLM_PROVIDERS=anthropic,openai` if you want to restrict what
+tenants may pick. A tenant's `llm_provider` selects which of its stored keys
+the agents use; embedding keys are separate (`voyage_key`).
 
 ```bash
 # Generate encryption key
@@ -313,7 +331,8 @@ HUMETRIC_ENCRYPTION_KEY=your-64-char-hex-key
 # Upload keys via API
 curl -X PUT "$BASE/tenant/keys" \
   -H "Authorization: Bearer $KEY" \
-  -d '{"anthropic_key": "...", "voyage_key": "..."}'
+  -d '{"anthropic_key": "...", "openai_key": "...", "google_ai_key": "...",
+       "deepseek_key": "...", "voyage_key": "..."}'
 ```
 
 ## Embedding Provider Abstraction
@@ -363,8 +382,12 @@ Per-language generator configs live in `openapi-generator-config/`
 | PUT | `/v1/packs/{pack_key}` | Update a Metric Pack |
 | **Entities** | | |
 | POST | `/v1/entities` | Create or upsert an entity |
+| GET | `/v1/entities` | List entities |
 | GET | `/v1/entities/{id}` | Get entity with metrics |
 | GET | `/v1/entities/{id}/metrics` | Get entity metrics only |
+| GET | `/v1/entities/{id}/metrics/{key}/explain` | Which signals produced this value |
+| GET | `/v1/entities/{id}/metrics/{key}/history` | Metric value over time |
+| GET | `/v1/entities/{id}/signals` | List an entity's signals |
 | **Signals** | | |
 | POST | `/v1/signals` | Submit a signal for processing |
 | GET | `/v1/signals/{id}` | Check signal processing status |
@@ -384,9 +407,11 @@ Per-language generator configs live in `openapi-generator-config/`
 | DELETE | `/v1/consent/{entity_id}` | Revoke consent |
 | **Tenant & BYO keys** | | |
 | GET | `/v1/tenant/keys` | Get BYO provider key status |
-| PUT | `/v1/tenant/keys` | Set BYO Anthropic/Voyage keys |
+| PUT | `/v1/tenant/keys` | Set BYO LLM and embedding keys |
 | DELETE | `/v1/tenant/keys` | Remove BYO keys |
 | GET | `/v1/tenant/dashboard` | Usage and subscription status |
+| POST | `/v1/tenant/export` | Request a full tenant data export |
+| POST | `/v1/tenant/start-trial` | Start the Pro trial |
 | POST | `/v1/tenant/rotate-api-key` | Rotate default API key |
 | **Billing** | | |
 | POST | `/v1/billing/checkout` | Create a Stripe checkout session |
@@ -397,6 +422,8 @@ Per-language generator configs live in `openapi-generator-config/`
 | POST | `/v1/login` | Tenant login |
 | **Usage & audit** | | |
 | GET | `/v1/usage` | Get usage report |
+| GET | `/v1/usage/calls` | Per-LLM-call history |
+| GET | `/v1/usage/packs` | Usage broken down by Metric Pack |
 | GET | `/v1/admin/usage` | Admin usage report (all tenants) |
 | GET | `/v1/audit-logs` | Read audit log events |
 | **Health** | | |
@@ -422,7 +449,17 @@ All settings via environment variables (see `.env.example`):
 | `HUMETRIC_WORKER_POLL_INTERVAL_S` | `1` | Worker poll interval (seconds) |
 | `HUMETRIC_WORKER_BATCH_SIZE` | `5` | Tasks per worker batch |
 | `HUMETRIC_API_PORT` | `8002` | API listen port |
-| `HUMETRIC_RATE_LIMIT` | `100` | Requests per minute per API key |
+| `HUMETRIC_RATE_LIMIT` | `100` | Requests per minute per API key — divided by `HUMETRIC_WORKER_COUNT`, since the counter is per process and not shared |
+| `HUMETRIC_WORKER_COUNT` | `1` | Number of uvicorn workers; keep in sync with `--workers` |
+| `HUMETRIC_ENABLED_LLM_PROVIDERS` | `anthropic,openai,google,deepseek` | Which providers tenants may select |
+| `HUMETRIC_LLM_MAX_RETRIES` | `3` | Retries per LLM call |
+| `HUMETRIC_ENCRYPTION_KEY` | — | 64-char hex key that encrypts BYO provider keys at rest |
+| `HUMETRIC_CORS_ALLOWED_ORIGINS` | `*` | Comma-separated allowed origins; restrict in production |
+| `DATABASE_URL_APP` | — | Connection string for the restricted `humetric_app` role — this is the one RLS is enforced through |
+| `HUMETRIC_ENFORCE_TIER_LIMITS` | `false` | Enforce the free-tier caps below |
+| `HUMETRIC_FREE_TIER_SIGNAL_LIMIT` | `10000` | Free-tier signals per month |
+| `HUMETRIC_FREE_TIER_ENTITY_LIMIT` | `50` | Free-tier entities |
+| `HUMETRIC_FREE_TIER_PACK_LIMIT` | `3` | Free-tier Metric Packs |
 
 ## Development
 
@@ -438,6 +475,9 @@ pytest                      # Run tests (written locally — see CONTRIBUTING.md
 ```bash
 # Production
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Dokploy / single-host stack (wires DATABASE_URL_APP for you)
+docker compose -f docker-compose.dokploy.yml up -d
 ```
 
 Worker runs alongside the database; scale horizontally by adding more worker replicas. The task queue uses PostgreSQL advisory locking for safe concurrent consumption.

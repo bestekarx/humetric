@@ -230,6 +230,10 @@ async def _persist_signal_result(
             "curator_model": curator_meta.get("model"),
             "needs_review": fm.needs_review,
             "source_span_verified": span_verified,
+            # Pre-call context size, recorded on every metric regardless of
+            # budget status. The budget_exceeded flag is a separate key written
+            # only on overage (spec 001, contracts/trace-budget-flag.md).
+            "measured_input_tokens": extract_meta.get("measured_input_tokens"),
         }
         await Store.append_metric_history(db, {
             "tenant_id": task.tenant_id,

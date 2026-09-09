@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .. import config
+from ..context import measure_extract_inputs
 from ..schema import ExtractedMetric, ExtractionResult
 from . import _load_prompt
 from .multi_llm import structured_call_multi
@@ -90,6 +91,14 @@ async def extract_metrics(
     pack_version: int | None = None,
 ) -> list[ExtractedMetric]:
     system, user = build_extract_inputs(signal_text, entity_context, pack_prompt, pack_metrics)
+    # Measure before the call, not after: the budget gate needs the number
+    # before spending anything, and the trace records it whether or not the
+    # budget was exceeded. call_meta is the existing channel for per-call facts,
+    # so the worker, the replay harness and the batch path all get it for free.
+    if call_meta is not None:
+        measurement = measure_extract_inputs(system, user)
+        call_meta["measured_input_tokens"] = measurement.total_tokens
+        call_meta["measured_system_tokens"] = measurement.system_tokens
     resolved_provider = provider or "anthropic"
     model = config.get_extractor_model(resolved_provider)
     result = await structured_call_multi(

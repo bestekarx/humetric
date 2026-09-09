@@ -63,6 +63,131 @@ graph LR
 istemcisidir ve `humetric` paketinden hiçbir şey import etmez
 (`mcp_server.py:68-70`). Site MCP'si ise site Postgres'ine doğrudan yazar.
 
+## İş katmanları — büyük resim
+
+> Aynı içeriğin bağımsız, kendi kendine yeten bir sayfası:
+> [`business-blueprint.html`](business-blueprint.html) (Mermaid.js CDN'den yüklenir, tarayıcıda
+> doğrudan açılabilir). Kanonik kaynak yine burasıdır — ikisi çelişirse buna güven.
+
+Yukarıdaki topoloji hangi sürecin hangi porta bağlandığını gösterir; aşağıdaki diyagram aynı
+sistemi **iş sorumluluğu** eksenine göre katmanlar (istemci → site iş katmanı → motor API →
+motor iş mantığı → veri → dış sağlayıcı) hâlinde tekrar çizer.
+
+```mermaid
+graph TB
+    subgraph L0["Katman 0 — İstemciler"]
+        BR["Tarayıcı — React SPA"]
+        MCPC["MCP istemcisi"]
+        APIC["Doğrudan API — SDK / n8n / curl"]
+    end
+
+    subgraph L1["Katman 1 — Site iş katmanı — humetric-site, ayrı repo"]
+        EXP["Express :3001 — oturum, proxy, paylaşım"]
+        WIZ["Pack Wizard ajanı — Site MCP"]
+        CHAT["Signal Chat ajanı — Site MCP"]
+        BILL["billing.ts — kredi düşümü"]
+    end
+    SPG[("Site Postgres — kullanıcı, BYOK anahtar, kredi")]
+
+    subgraph L2["Katman 2 — Motor API katmanı — humetric"]
+        FAPI["FastAPI :8002 — doğrulama, kuyruğa yaz"]
+        EMCP["Motor MCP — stdio, saf HTTP istemcisi"]
+    end
+
+    subgraph L3["Katman 3 — Motor iş mantığı — arka plan"]
+        WRK["worker.py"]
+        BWRK["batch_worker.py"]
+        EXT["extractor — tek LLM çağrısı"]
+        CUR["curator — deterministik birleştirme"]
+        RANK["ranker — opsiyonel"]
+    end
+    PG[("Motor Postgres + pgvector — RLS'li 14 tablo")]
+
+    subgraph L5["Dış sağlayıcılar"]
+        LLM["LLM — BYOK"]
+        EMB["Embedding sağlayıcı"]
+        STR["Stripe"]
+        SMTP["SMTP"]
+    end
+
+    BR --> EXP
+    MCPC --> WIZ
+    MCPC --> CHAT
+    MCPC --> EMCP
+    APIC --> FAPI
+
+    EXP --> FAPI
+    WIZ --> BILL --> SPG
+    CHAT --> BILL
+    WIZ --> FAPI
+    CHAT --> FAPI
+    EMCP --> FAPI
+    EXP --> SPG
+    WIZ --> LLM
+    CHAT --> LLM
+    EXP --> STR
+    EXP --> SMTP
+
+    FAPI --> PG
+    FAPI -. kuyruk .-> WRK
+    WRK --> BWRK
+    WRK --> EXT --> LLM
+    EXT --> CUR --> PG
+    FAPI -. opsiyonel .-> RANK --> LLM
+    WRK --> EMB
+    WRK --> PG
+```
+
+### Üç ana iş akışı
+
+Aynı sistemde üç işlem üç farklı yoldan geçer: sinyal işleme kuyruklu ve asenkron, ajan
+oturumu çok turlu ve ücretli, sorgu senkron ve LLM'i opsiyonel.
+
+```mermaid
+flowchart TD
+    C1["İstemci"] -->|"POST /v1/signals"| A1["api.py<br/>doğrula + kuyruğa al · 202"]
+    A1 --> Q1[("task tablosu")]
+    Q1 --> W1["worker.py"]
+    W1 --> E1["extractor.py<br/>tek LLM çağrısı"]
+    E1 --> CU1["curator.py<br/>deterministik birleştirme"]
+    CU1 --> K1{"KVKK rızası<br/>var mı?"}
+    K1 -->|hayır| SK1["atla — hiç yazılmaz"]
+    K1 -->|evet| SP1{"source_span<br/>doğrulandı mı?"}
+    SP1 -->|hayır| PR1["review_status =<br/>pending_review"]
+    SP1 -->|evet| OK1["doğrudan yaz"]
+    PR1 --> DB1[("entity_metric<br/>+ history")]
+    OK1 --> DB1
+    DB1 --> EM1["embedding güncelle"]
+```
+
+```mermaid
+flowchart TD
+    C2["Tarayıcı / MCP istemcisi"] -->|"start"| S2["Site MCP<br/>Wizard veya Signal Chat"]
+    S2 --> B2["kredi düşümü<br/>billing.ts"]
+    B2 --> L2["ajan turu<br/>LLM çağrısı"]
+    L2 -->|"entity / signal / metric<br/>oku-yaz"| API2["Motor /v1/*"]
+    API2 --> PG2[("Motor Postgres")]
+    L2 --> SSE2["agent_events<br/>→ SSE akışı"]
+    SSE2 --> C2
+```
+
+```mermaid
+flowchart TD
+    C3["Tarayıcı"] -->|"GET /api/..."| PX3["proxy.ts<br/>kimlik kendi kendini onarır"]
+    PX3 -->|"Bearer hm_live_"| API3["Motor /v1/query"]
+    API3 --> H3["hibrit arama<br/>vektör + tam metin"]
+    H3 --> R3{"rerank = true?"}
+    R3 -->|evet| RK3["ranker.py — LLM"]
+    R3 -->|hayır| SK3["hibrit skorla dön"]
+    RK3 --> RESP3["QueryResponse"]
+    SK3 --> RESP3
+    RESP3 --> PX3 --> C3
+```
+
+`001-context-engineering-cost` planı bu resmin tam olarak **Katman 2 ↔ Katman 3** sınırındaki
+tek bir hücreye — extraction çağrısının bağlamına ve cache'ine — odaklanır; geri kalan her şey
+o planın kapsamında değişmeden kalır.
+
 ## Bileşen sorumlulukları
 
 | Bileşen | Sorumluluk | Sınır |
@@ -121,3 +246,5 @@ dosyasındadır — bu repoya yazılmaz.
 - Tablolar, RLS, hafıza katmanları → [`data-model.md`](data-model.md)
 - İki MCP sunucusu → [`mcp.md`](mcp.md)
 - Site iç mimarisi → [`site.md`](site.md)
+- Bağlam bütçesi, prompt kompozisyonu, cache ve maliyet muhasebesi →
+  [`context-engineering.md`](context-engineering.md)
